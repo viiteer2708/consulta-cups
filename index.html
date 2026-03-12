@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta CUPS — Mega Energía</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #dbeafe;
+            --accent: #10b981;
+            --accent-dark: #059669;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gas: #f97316;
+            --gas-light: #fff7ed;
+            --elec: #2563eb;
+            --elec-light: #eff6ff;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,.08), 0 4px 10px rgba(0,0,0,.04);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header__brand {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: var(--primary);
+        }
+
+        .header__brand svg { flex-shrink: 0; }
+
+        .header__status {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-size: .8rem;
+            color: var(--text-muted);
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            transition: background .3s;
+        }
+        .status-dot.ok { background: var(--accent); }
+
+        /* ── Main layout ── */
+        .main {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 2rem 1.25rem 4rem;
+        }
+
+        /* ── Search card ── */
+        .search-card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .search-card h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: .25rem;
+        }
+
+        .search-card p {
+            color: var(--text-muted);
+            font-size: .9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-row {
+            display: flex;
+            gap: .75rem;
+        }
+
+        .input-wrap {
+            flex: 1;
+            position: relative;
+        }
+
+        .input-wrap input {
+            width: 100%;
+            padding: .85rem 1rem .85rem 2.75rem;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 1rem;
+            font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+            letter-spacing: .02em;
+            transition: border-color .2s, box-shadow .2s;
+            outline: none;
+            text-transform: uppercase;
+        }
+
+        .input-wrap input::placeholder {
+            text-transform: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+            letter-spacing: 0;
+            color: #94a3b8;
+        }
+
+        .input-wrap input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+
+        .input-wrap .icon {
+            position: absolute;
+            left: .85rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            padding: .85rem 1.75rem;
+            border: none;
+            border-radius: var(--radius);
+            font-size: .95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s, transform .1s, box-shadow .2s;
+            white-space: nowrap;
+        }
+
+        .btn:active { transform: scale(.97); }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--primary-dark); box-shadow: var(--shadow); }
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ── Type badge ── */
+        .type-badge {
+            display: none;
+            align-items: center;
+            gap: .4rem;
+            padding: .35rem .85rem;
+            border-radius: 20px;
+            font-size: .8rem;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+        .type-badge.show { display: inline-flex; }
+        .type-badge.elec { background: var(--elec-light); color: var(--elec); }
+        .type-badge.gas { background: var(--gas-light); color: var(--gas); }
+
+        /* ── Loading ── */
+        .loader {
+            display: none;
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        .loader.show { display: block; }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loader p { color: var(--text-muted); font-size: .9rem; }
+
+        /* ── Error ── */
+        .error-msg {
+            display: none;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 1rem 1.25rem;
+            border-radius: var(--radius);
+            font-size: .9rem;
+            margin-bottom: 1.5rem;
+        }
+        .error-msg.show { display: flex; gap: .75rem; align-items: flex-start; }
+
+        /* ── Results ── */
+        .results { display: none; }
+        .results.show { display: block; }
+
+        .section-title {
+            font-size: .8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--text-muted);
+            margin-bottom: .75rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: .75rem;
+            margin-bottom: 2rem;
+        }
+
+        .data-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            transition: box-shadow .2s, transform .2s;
+        }
+
+        .data-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-1px);
+        }
+
+        .data-card__label {
+            font-size: .75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: var(--text-muted);
+            margin-bottom: .4rem;
+        }
+
+        .data-card__value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.2;
+        }
+
+        .data-card__value small {
+            font-size: .75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-left: .15rem;
+        }
+
+        .data-card__sub {
+            font-size: .8rem;
+            color: var(--text-muted);
+            margin-top: .25rem;
+        }
+
+        /* ── Periods table ── */
+        .periods-table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        .periods-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .875rem;
+        }
+
+        .periods-table th {
+            background: var(--bg);
+            padding: .75rem 1rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .periods-table td {
+            padding: .7rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .periods-table tr:last-child td { border-bottom: none; }
+
+        .periods-table tr:hover td { background: var(--bg); }
+
+        .period-bar-cell {
+            position: relative;
+        }
+
+        .period-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--primary);
+            transition: width .6s ease;
+        }
+
+        .period-bar.gas { background: var(--gas); }
+
+        /* ── Maximeters table ── */
+        .maximeters-section { margin-bottom: 2rem; }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .search-row { flex-direction: column; }
+            .btn { width: 100%; }
+            .search-card { padding: 1.25rem; }
+            .search-card h1 { font-size: 1.25rem; }
+            .main { padding: 1rem .75rem 3rem; }
+            .card-grid { grid-template-columns: 1fr 1fr; }
+            .data-card__value { font-size: 1.25rem; }
+            .header__brand span { display: none; }
+        }
+
+        @media (max-width: 380px) {
+            .card-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Animations ── */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .results.show { animation: fadeUp .4s ease; }
+
+        /* Print styles */
+        @media print {
+            .header, .search-card { break-inside: avoid; }
+            .btn { display: none; }
+            body { background: #fff; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+    <div class="header__brand">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <span>Consulta CUPS</span>
+    </div>
+    <div class="header__status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Desconectado</span>
+    </div>
+</header>
+
+<!-- Main -->
+<main class="main">
+
+    <!-- Search -->
+    <div class="search-card">
+        <h1>Consulta de CUPS</h1>
+        <p>Introduce el código CUPS para obtener potencias, consumos y maxímetros</p>
+
+        <div class="search-row">
+            <div class="input-wrap">
+                <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input
+                    type="text"
+                    id="cupsInput"
+                    placeholder="ES0021000012345678AB"
+                    autocomplete="off"
+                    spellcheck="false"
+                    maxlength="25"
+                />
+            </div>
+            <button class="btn btn-primary" id="searchBtn" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                Consultar
+            </button>
+        </div>
+
+        <div class="type-badge" id="typeBadge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="typeBadgeIcon"></svg>
+            <span id="typeBadgeText"></span>
+        </div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-msg" id="errorMsg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span id="errorText"></span>
+    </div>
+
+    <!-- Loader -->
+    <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <p>Consultando SIPS...</p>
+    </div>
+
+    <!-- Results -->
+    <div class="results" id="results">
+
+        <!-- Info section -->
+        <div id="infoSection">
+            <div class="section-title">Datos del punto de suministro</div>
+            <div class="card-grid" id="infoCards"></div>
+        </div>
+
+        <!-- Consumo anual section -->
+        <div id="consumoSection">
+            <div class="section-title">Consumo anual</div>
+            <div class="card-grid" id="consumoCards"></div>
+            <div id="periodosTableWrap"></div>
+        </div>
+
+        <!-- Maxímetros section (only electricity) -->
+        <div id="maximetrosSection" class="maximeters-section">
+            <div class="section-title">Maxímetros</div>
+            <div id="maximetrosContent"></div>
+        </div>
+
+    </div>
+
+</main>
+
+<script>
+(function () {
+    'use strict';
+
+    // ── Config ──
+    const API_BASE = 'https://sicom.megaenergia.es/sicom/api/1.0';
+    const CREDENTIALS = { username: 'REDACTED', password: 'REDACTED' };
+
+    // ── State ──
+    let authToken = null;
+    let tokenExpiry = 0;
+
+    // ── DOM ──
+    const $ = (s) => document.querySelector(s);
+    const cupsInput = $('#cupsInput');
+    const searchBtn = $('#searchBtn');
+    const typeBadge = $('#typeBadge');
+    const typeBadgeIcon = $('#typeBadgeIcon');
+    const typeBadgeText = $('#typeBadgeText');
+    const loader = $('#loader');
+    const errorMsg = $('#errorMsg');
+    const errorText = $('#errorText');
+    const results = $('#results');
+    const statusDot = $('#statusDot');
+    const statusText = $('#statusText');
+
+    // ── Helpers ──
+    function detectType(cups) {
+        const c = cups.toUpperCase().replace(/\s/g, '');
+        if (/^ES\d{4}31/.test(c)) return 'gas';
+        if (/^ES\d{4}(00|01|02|03|04|05|06|07|08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30)/.test(c)) return 'electricidad';
+        // Fallback: check 5th-6th chars
+        const code = parseInt(c.substring(4, 6), 10);
+        if (code === 31) return 'gas';
+        return 'electricidad';
+    }
+
+    function formatNumber(n, decimals = 2) {
+        if (n == null || isNaN(n)) return '—';
+        return new Intl.NumberFormat('es-ES', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        }).format(n);
+    }
+
+    function toKWh(value, unit) {
+        if (!value && value !== 0) return null;
+        const v = parseFloat(value);
+        if (isNaN(v)) return null;
+        if (unit && unit.toLowerCase().includes('mwh')) return v * 1000;
+        return v;
+    }
+
+    function showError(msg) {
+        errorText.textContent = msg;
+        errorMsg.classList.add('show');
+    }
+
+    function hideError() {
+        errorMsg.classList.remove('show');
+    }
+
+    function setLoading(on) {
+        loader.classList.toggle('show', on);
+        results.classList.remove('show');
+        searchBtn.disabled = on;
+    }
+
+    // ── Auth ──
+    async function authenticate() {
+        if (authToken && Date.now() < tokenExpiry) return authToken;
+
+        const res = await fetch(`${API_BASE}/auth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(CREDENTIALS)
+        });
+
+        if (!res.ok) throw new Error('Error de autenticación con la API');
+
+        const data = await res.json();
+        // The API returns { authorization: "Bearer xxx", refresh: "...", expires_in: 3600 }
+        const authField = data.authorization || data.token || data.access_token || '';
+        authToken = authField.replace(/^Bearer\s+/i, '');
+        if (!authToken) throw new Error('No se recibió token de autenticación');
+
+        tokenExpiry = Date.now() + 3500 * 1000; // 3500s to be safe
+        statusDot.classList.add('ok');
+        statusText.textContent = 'Conectado';
+        return authToken;
+    }
+
+    async function apiGet(endpoint) {
+        const token = await authenticate();
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (res.status === 401) {
+            // Token expired, retry once
+            authToken = null;
+            const newToken = await authenticate();
+            const retry = await fetch(`${API_BASE}${endpoint}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${newToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!retry.ok) throw new Error(`Error ${retry.status}: ${retry.statusText}`);
+            const rjson = await retry.json();
+            if (Array.isArray(rjson) && rjson.length === 0) return null;
+            if (Array.isArray(rjson) && rjson.length === 1) return rjson[0];
+            return rjson;
+        }
+
+        if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        // API returns [] for no results — normalize to null
+        if (Array.isArray(json) && json.length === 0) return null;
+        // If array with one element, unwrap it
+        if (Array.isArray(json) && json.length === 1) return json[0];
+        return json;
+    }
+
+    // ── Render: Info cards ──
+    function renderInfoCards(data, tipo) {
+        const container = $('#infoCards');
+        container.innerHTML = '';
+
+        const cards = [];
+
+        if (tipo === 'electricidad') {
+            // Potencias contratadas
+            const potencias = [];
+            for (let i = 1; i <= 6; i++) {
+                const key = `potenciaContratadaP${i}`;
+                const altKey = `potContratadaP${i}`;
+                const val = data[key] || data[altKey];
+                if (val != null && parseFloat(val) > 0) {
+                    potencias.push({ periodo: `P${i}`, valor: parseFloat(val) });
+                }
+            }
+
+            if (potencias.length > 0) {
+                potencias.forEach(p => {
+                    cards.push({
+                        label: `Potencia Contratada ${p.periodo}`,
+                        value: formatNumber(p.valor, 2),
+                        unit: 'kW'
+                    });
+                });
+            }
+
+            // Potencia máxima BIE
+            const bie = data.potenciaMaximaBIE || data.potMaxBie || data.potMaximaBIE || data.potenciaBIE;
+            if (bie != null) {
+                cards.push({
+                    label: 'Potencia Máxima BIE',
+                    value: formatNumber(parseFloat(bie), 2),
+                    unit: 'kW'
+                });
+            }
+
+            // Tarifa de acceso
+            const tarifa = data.tarifaAcceso || data.codigoTarifa || data.tarifa;
+            if (tarifa) {
+                cards.push({
+                    label: 'Tarifa de Acceso',
+                    value: tarifa,
+                    unit: ''
+                });
+            }
+
+            // Tensión
+            const tension = data.tension || data.tensionMedida;
+            if (tension) {
+                cards.push({
+                    label: 'Tensión',
+                    value: tension,
+                    unit: 'V'
+                });
+            }
+
+            // Distribuidora
+            const distri = data.distribuidora || data.nombreDistribuidora || data.empresa;
+            if (distri) {
+                cards.push({
+                    label: 'Distribuidora',
+                    value: distri,
+                    unit: ''
+                });
+            }
+
+        } else {
+            // Gas
+            const tarifa = data.tarifaAcceso || data.tarifa || data.codigoTarifa;
+            if (tarifa) {
+                cards.push({ label: 'Tarifa de Acceso', value: tarifa, unit: '' });
+            }
+
+            const presion = data.presion || data.presionMedida;
+            if (presion) {
+                cards.push({ label: 'Presión', value: presion, unit: 'bar' });
+            }
+
+            const distri = data.distribuidora || data.nombreDistribuidora || data.empresa;
+            if (distri) {
+                cards.push({ label: 'Distribuidora', value: distri, unit: '' });
+            }
+
+            const caudal = data.caudalMaximoDiario || data.caudalMaximo || data.Qd;
+            if (caudal) {
+                cards.push({ label: 'Caudal Máximo Diario', value: formatNumber(parseFloat(caudal)), unit: 'm³/día' });
+            }
+        }
+
+        if (cards.length === 0) {
+            // Show raw fields if we didn't map any
+            Object.entries(data).forEach(([key, val]) => {
+                if (key === 'cups' || val == null || val === '') return;
+                cards.push({
+                    label: key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()),
+                    value: String(val),
+                    unit: ''
+                });
+            });
+        }
+
+        cards.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'data-card';
+            div.innerHTML = `
+                <div class="data-card__label">${c.label}</div>
+                <div class="data-card__value">${c.value}${c.unit ? `<small>${c.unit}</small>` : ''}</div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // ── Render: Consumo anual ──
+    function renderConsumoAnual(data, tipo) {
+        const container = $('#consumoCards');
+        const tableWrap = $('#periodosTableWrap');
+        container.innerHTML = '';
+        tableWrap.innerHTML = '';
+
+        const unit = data.unidad || data.unit || '';
+
+        // Total
+        const totalRaw = data.energiaActivaAnualTotal || data.consumoAnualTotal || data.consumoTotal || data.energiaTotal;
+        const totalKwh = toKWh(totalRaw, unit);
+
+        if (totalKwh != null) {
+            const div = document.createElement('div');
+            div.className = 'data-card';
+            div.style.gridColumn = '1 / -1';
+            div.innerHTML = `
+                <div class="data-card__label">Consumo Anual Total</div>
+                <div class="data-card__value" style="font-size:2rem;color:${tipo === 'gas' ? 'var(--gas)' : 'var(--primary)'}">
+                    ${formatNumber(totalKwh, 0)}<small>kWh</small>
+                </div>
+                ${unit.toLowerCase().includes('mwh') ? '<div class="data-card__sub">Convertido de MWh a kWh</div>' : ''}
+            `;
+            container.appendChild(div);
+        }
+
+        // Periodos
+        const periodos = [];
+        for (let i = 1; i <= 6; i++) {
+            const keys = [
+                `energiaActivaAnualP${i}`,
+                `consumoAnualP${i}`,
+                `consumoP${i}`,
+                `energiaP${i}`
+            ];
+            for (const k of keys) {
+                if (data[k] != null) {
+                    const val = toKWh(data[k], unit);
+                    if (val != null && val > 0) {
+                        periodos.push({ periodo: `P${i}`, kwh: val });
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (periodos.length > 0) {
+            const maxVal = Math.max(...periodos.map(p => p.kwh));
+            const barClass = tipo === 'gas' ? 'gas' : '';
+
+            let tableHTML = `
+                <div class="periods-table-wrap">
+                    <table class="periods-table">
+                        <thead>
+                            <tr>
+                                <th>Periodo</th>
+                                <th>Consumo</th>
+                                <th style="width:40%">Distribución</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            periodos.forEach(p => {
+                const pct = maxVal > 0 ? (p.kwh / maxVal * 100) : 0;
+                tableHTML += `
+                    <tr>
+                        <td><strong>${p.periodo}</strong></td>
+                        <td>${formatNumber(p.kwh, 0)} kWh</td>
+                        <td class="period-bar-cell">
+                            <div class="period-bar ${barClass}" style="width:${pct}%"></div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += '</tbody></table></div>';
+            tableWrap.innerHTML = tableHTML;
+        }
+    }
+
+    // ── Render: Maxímetros ──
+    function renderMaximetros(data, tipo) {
+        const section = $('#maximetrosSection');
+        const container = $('#maximetrosContent');
+        container.innerHTML = '';
+
+        if (tipo === 'gas') {
+            section.style.display = 'none';
+            return;
+        }
+
+        section.style.display = '';
+
+        // data could be an array or object with maximetros array
+        let records = [];
+        if (Array.isArray(data)) {
+            records = data;
+        } else if (data.maximetros && Array.isArray(data.maximetros)) {
+            records = data.maximetros;
+        } else if (data.registros && Array.isArray(data.registros)) {
+            records = data.registros;
+        } else if (data.valores && Array.isArray(data.valores)) {
+            records = data.valores;
+        } else {
+            // Try to show the whole object
+            const entries = Object.entries(data).filter(([k, v]) => k !== 'cups');
+            if (entries.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-muted);font-size:.9rem">No se encontraron maxímetros</p>';
+                return;
+            }
+            // Might be flat maximeter data
+            records = [data];
+        }
+
+        if (records.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted);font-size:.9rem">No se encontraron maxímetros</p>';
+            return;
+        }
+
+        // Build table from records
+        // Determine columns from first record
+        const firstRecord = records[0];
+        const columns = Object.keys(firstRecord).filter(k => k !== 'cups');
+
+        const headerLabels = {
+            fecha: 'Fecha',
+            periodo: 'Periodo',
+            potenciaMaxima: 'Pot. Máxima',
+            potMaxDemandadaP1: 'Pot. Máx. P1',
+            potMaxDemandadaP2: 'Pot. Máx. P2',
+            potMaxDemandadaP3: 'Pot. Máx. P3',
+            potMaxDemandadaP4: 'Pot. Máx. P4',
+            potMaxDemandadaP5: 'Pot. Máx. P5',
+            potMaxDemandadaP6: 'Pot. Máx. P6',
+            maximetroP1: 'Maxímetro P1',
+            maximetroP2: 'Maxímetro P2',
+            maximetroP3: 'Maxímetro P3',
+            maximetroP4: 'Maxímetro P4',
+            maximetroP5: 'Maxímetro P5',
+            maximetroP6: 'Maxímetro P6',
+            valor: 'Valor',
+            unidad: 'Unidad',
+            fechaInicio: 'Desde',
+            fechaFin: 'Hasta',
+            mesAnyo: 'Mes/Año'
+        };
+
+        let html = '<div class="periods-table-wrap"><table class="periods-table"><thead><tr>';
+        columns.forEach(col => {
+            html += `<th>${headerLabels[col] || col.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        // Show last 12 records max
+        const display = records.slice(-12);
+        display.forEach(row => {
+            html += '<tr>';
+            columns.forEach(col => {
+                let val = row[col];
+                if (val != null && !isNaN(val) && col !== 'fecha' && col !== 'fechaInicio' && col !== 'fechaFin' && col !== 'mesAnyo' && col !== 'periodo') {
+                    val = formatNumber(parseFloat(val)) + ' kW';
+                }
+                html += `<td>${val != null ? val : '—'}</td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    }
+
+    // ── Main search ──
+    async function search() {
+        const cups = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
+        if (!cups) return;
+
+        hideError();
+        setLoading(true);
+
+        const tipo = detectType(cups);
+
+        try {
+            // Parallel API calls
+            const [infoData, consumoData, maxData] = await Promise.all([
+                apiGet(`/sips/info?cups=${encodeURIComponent(cups)}`).catch(() => null),
+                apiGet(`/sips/consumo/anual?linea=${tipo}&cups=${encodeURIComponent(cups)}`).catch(() => null),
+                tipo === 'electricidad'
+                    ? apiGet(`/sips/consumo?linea=${tipo}&cups=${encodeURIComponent(cups)}`).catch(() => null)
+                    : Promise.resolve(null)
+            ]);
+
+            setLoading(false);
+
+            if (!infoData && !consumoData && !maxData) {
+                showError('No se encontraron datos para el CUPS introducido. Verifica que el código es correcto.');
+                return;
+            }
+
+            // Render info
+            if (infoData) {
+                $('#infoSection').style.display = '';
+                renderInfoCards(infoData, tipo);
+            } else {
+                $('#infoSection').style.display = 'none';
+            }
+
+            // Render consumo
+            if (consumoData) {
+                $('#consumoSection').style.display = '';
+                renderConsumoAnual(consumoData, tipo);
+            } else {
+                $('#consumoSection').style.display = 'none';
+            }
+
+            // Render maxímetros
+            if (maxData && tipo === 'electricidad') {
+                renderMaximetros(maxData, tipo);
+            } else {
+                $('#maximetrosSection').style.display = 'none';
+            }
+
+            results.classList.add('show');
+
+        } catch (err) {
+            setLoading(false);
+            showError(err.message || 'Error desconocido al consultar la API');
+        }
+    }
+
+    // ── Events ──
+    cupsInput.addEventListener('input', () => {
+        const val = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
+        const valid = val.length >= 20 && /^ES\d{4}/.test(val);
+        searchBtn.disabled = !valid;
+
+        if (val.length >= 6) {
+            const tipo = detectType(val);
+            typeBadge.classList.add('show');
+            typeBadge.classList.remove('elec', 'gas');
+            if (tipo === 'gas') {
+                typeBadge.classList.add('gas');
+                typeBadgeIcon.innerHTML = '<path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/>';
+                typeBadgeText.textContent = 'Punto de Gas';
+            } else {
+                typeBadge.classList.add('elec');
+                typeBadgeIcon.innerHTML = '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>';
+                typeBadgeText.textContent = 'Punto de Electricidad';
+            }
+        } else {
+            typeBadge.classList.remove('show');
+        }
+    });
+
+    searchBtn.addEventListener('click', search);
+
+    cupsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !searchBtn.disabled) search();
+    });
+
+    // Try auth on load
+    authenticate().catch(() => {
+        statusText.textContent = 'Error de conexión';
+    });
+
+})();
+</script>
+
+</body>
+</html>
