@@ -1007,6 +1007,7 @@
         const excOpt = filas.reduce((a, f) => a + f.pen, 0);
         const costeOpt = termOpt + excOpt;
         const nExc = filas.reduce((a, f) => a + f.nExc, 0);
+        const maxExcMeses = filas.reduce((a, f) => Math.max(a, f.nExc), 0); // meses naturales con exceso (pico)
         const ahorro = st.costeActual - costeOpt;
 
         $('#econRiesgoLabel').textContent = riesgoNivel === st.riesgoOptimo
@@ -1017,7 +1018,7 @@
         if (ahorro >= 1) {
             estado = 'down'; titulo = 'Ahorro optimizando la potencia';
             big = fmt(ahorro, 0); bigLabel = '€/año';
-            texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año en término de potencia${st.excActual > 1 ? ' y excesos' : ''}. Con esta configuración pagarías ~${fmt(costeOpt, 0)} €/año.`;
+            texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año en término de potencia${st.excActual > 1 ? ' y excesos' : ''}. Con esta configuración pagarías ~${fmt(costeOpt, 0)} €/año${excOpt > 1 ? `, incluidos ~${fmt(excOpt, 0)} € de excesos que asumiría el cliente (${maxExcMeses} ${maxExcMeses === 1 ? 'mes' : 'meses'} al año)` : ', sin excesos'}.`;
         } else if (st.excActual > excOpt + 1) {
             // la óptima reduce los excesos de hoy: el cliente está infradimensionado (paga excesos)
             estado = 'up'; titulo = 'Potencia infradimensionada';
