@@ -946,12 +946,23 @@
         });
     }
 
+    // Nivel de riesgo (0-100) que MAXIMIZA el ahorro neto; a igualdad de ahorro, el más seguro.
+    function mejorRiesgo(periodos, tarifaTipo, costeActual) {
+        let mejorX = 0, mejorAhorro = -Infinity;
+        for (let x = 0; x <= 100; x++) {
+            const ahorro = costeActual - computeEcon(periodos, tarifaTipo, x).reduce((a, f) => a + f.total, 0);
+            if (ahorro > mejorAhorro + 0.5) { mejorAhorro = ahorro; mejorX = x; } // solo si mejora claro → conserva el más seguro en empate
+        }
+        return mejorX;
+    }
+
     function renderEconomico(periodos, tarifaTipo, tarifaLabel) {
-        riesgoNivel = 50; // cada análisis arranca en el óptimo económico recomendado
         const termActual = periodos.reduce((s, p) => s + p.contratadaKw * p.precio, 0);
         const excActual = periodos.reduce((s, p) => s + penalAnual(p, p.contratadaKw), 0);
         const nMeses = periodos.reduce((m, p) => Math.max(m, p.meses.length), 0);
-        econState = { periodos, tarifaTipo, tarifaLabel, termActual, excActual, costeActual: termActual + excActual, nMeses };
+        const costeActual = termActual + excActual;
+        riesgoNivel = mejorRiesgo(periodos, tarifaTipo, costeActual); // arranca en el punto de máximo ahorro
+        econState = { periodos, tarifaTipo, tarifaLabel, termActual, excActual, costeActual, nMeses, riesgoOptimo: riesgoNivel };
 
         $('#optimizadorContent').innerHTML = `
             <div id="econHero"></div>
@@ -961,7 +972,7 @@
                     <span class="opt-margin__value" id="econRiesgoLabel"></span>
                 </div>
                 <input type="range" id="econSlider" min="0" max="100" step="1" value="${riesgoNivel}">
-                <div class="opt-margin__hint">🛡️ Seguro (cubre el pico, 0 excesos) &nbsp;·&nbsp; 🎯 Óptimo económico &nbsp;·&nbsp; 🔥 Agresivo (apuesta a un año más suave)</div>
+                <div class="opt-margin__hint">⭐ Arranca en el <strong>máximo ahorro</strong>. 🛡️ Seguro (cubre el pico, 0 excesos) &nbsp;·&nbsp; 🎯 Óptimo &nbsp;·&nbsp; 🔥 Agresivo (apuesta a un año más suave)</div>
             </div>
             <div class="econ-breakdown" id="econBreakdown"></div>
             <div class="opt-table-wrap"><table class="opt-table"><thead><tr>
@@ -983,7 +994,9 @@
         const nExc = filas.reduce((a, f) => a + f.nExc, 0);
         const ahorro = st.costeActual - costeOpt;
 
-        $('#econRiesgoLabel').textContent = riesgoNivel < 34 ? '🛡️ Seguro' : (riesgoNivel < 67 ? '🎯 Óptimo económico' : '🔥 Agresivo');
+        $('#econRiesgoLabel').textContent = riesgoNivel === st.riesgoOptimo
+            ? '⭐ Máximo ahorro'
+            : (riesgoNivel < 34 ? '🛡️ Seguro' : (riesgoNivel < 67 ? '🎯 Óptimo económico' : '🔥 Agresivo'));
 
         let estado, titulo, texto, big, bigLabel;
         if (ahorro >= 1) {
