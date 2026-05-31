@@ -914,27 +914,38 @@
     function costePeriodo(p, v, lambda) {
         return p.picoKw <= 0 ? v * p.precio : v * p.precio + lambda * penalAnual(p, v);
     }
-    // Optimización GLOBAL por programación dinámica: minimiza Σ coste_periodo sujeto a la
-    // restricción legal P1≤P2≤…≤P6. El greedy (óptimo por periodo + max acumulado) no garantiza
-    // el óptimo conjunto; la DP sí, y busca en TODO el rango [1, pico] (sin suelo heurístico).
+    const MAX_EXCESOS = 3;   // meses pico que se pueden "afeitar" como máximo (juego: pasarse 1-2 veces)
+    // Suelo realista por periodo: nunca recomendar por debajo de la (MAX_EXCESOS+1)-ésima demanda más
+    // alta (→ a lo sumo 3 meses de exceso) ni del mínimo legal de la tarifa. Evita infracontratar.
+    function sueloPeriodo(p, minLegal) {
+        if (!p.meses.length) return minLegal;
+        const desc = p.meses.map(m => m.maxKw).slice().sort((a, b) => b - a);
+        const nivel = desc[Math.min(MAX_EXCESOS, desc.length - 1)]; // (MAX_EXCESOS+1)-ésima más alta
+        return Math.max(minLegal, Math.ceil(nivel - 1e-9));
+    }
+    // Optimización GLOBAL por programación dinámica: minimiza Σ coste_periodo sujeto a P1≤P2≤…≤P6,
+    // restringida al rango realista [suelo de demanda, pico] de cada periodo.
     function computeEcon(periodos, tarifaTipo, x) {
         const lam = lambdaRiesgo(x), n = periodos.length;
         if (!n) return [];
-        const lo = 1;
-        const hi = Math.max(1, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
+        const minLegal = tarifaTipo === '3.0' ? 15 : 1; // 3.0TD: la potencia contratada es >15 kW
+        const suelos = periodos.map(p => sueloPeriodo(p, minLegal));
+        const lo = Math.min(...suelos);
+        const hi = Math.max(minLegal, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
         const m = hi - lo + 1;
+        const coste = (i, v) => v < suelos[i] ? Infinity : costePeriodo(periodos[i], v, lam);
         let dp = new Array(m);
-        for (let j = 0; j < m; j++) dp[j] = costePeriodo(periodos[0], lo + j, lam);
+        for (let jj = 0; jj < m; jj++) dp[jj] = coste(0, lo + jj);
         const choices = [];
         for (let i = 1; i < n; i++) {
             const pmVal = new Array(m), pmArg = new Array(m);
             let bV = Infinity, bA = 0;
-            for (let j = 0; j < m; j++) { if (dp[j] < bV) { bV = dp[j]; bA = j; } pmVal[j] = bV; pmArg[j] = bA; }
+            for (let jj = 0; jj < m; jj++) { if (dp[jj] < bV) { bV = dp[jj]; bA = jj; } pmVal[jj] = bV; pmArg[jj] = bA; }
             const ndp = new Array(m), arg = new Array(m);
-            for (let j = 0; j < m; j++) { ndp[j] = costePeriodo(periodos[i], lo + j, lam) + pmVal[j]; arg[j] = pmArg[j]; }
+            for (let jj = 0; jj < m; jj++) { ndp[jj] = coste(i, lo + jj) + pmVal[jj]; arg[jj] = pmArg[jj]; }
             choices.push(arg); dp = ndp;
         }
-        let bj = 0; for (let j = 1; j < m; j++) if (dp[j] < dp[bj]) bj = j;
+        let bj = 0; for (let jj = 1; jj < m; jj++) if (dp[jj] < dp[bj]) bj = jj;
         const opt = new Array(n); opt[n - 1] = lo + bj;
         let j = bj;
         for (let i = n - 1; i >= 1; i--) { j = choices[i - 1][j]; opt[i - 1] = lo + j; }
@@ -1003,10 +1014,15 @@
             estado = 'down'; titulo = 'Ahorro optimizando la potencia';
             big = fmt(ahorro, 0); bigLabel = '€/año';
             texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año en término de potencia${st.excActual > 1 ? ' y excesos' : ''}. Con esta configuración pagarías ~${fmt(costeOpt, 0)} €/año.`;
+        } else if (st.excActual > excOpt + 1) {
+            // la óptima reduce los excesos de hoy: el cliente está infradimensionado (paga excesos)
+            estado = 'up'; titulo = 'Potencia infradimensionada';
+            big = fmt(st.excActual, 0); bigLabel = '€/año en excesos hoy';
+            texto = `Tu potencia contratada se queda corta: hoy pagas ~${fmt(st.excActual, 0)} €/año en excesos. La potencia recomendada los reduce a ~${fmt(excOpt, 0)} €/año; sube el término fijo pero te pone en regla y evita penalizaciones.`;
         } else {
-            estado = 'up'; titulo = 'Esta configuración no ahorra';
-            big = fmt(ahorro, 0); bigLabel = '€/año';
-            texto = 'A este nivel de riesgo los excesos esperados superan el ahorro del término fijo. Mueve el control hacia «Seguro».';
+            estado = 'ok'; titulo = 'Potencia bien ajustada';
+            big = '✓'; bigLabel = '';
+            texto = 'La potencia contratada ya está alineada con tu demanda real. No hay ahorro relevante optimizando.';
         }
         const icon = estado === 'up'
             ? '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'
