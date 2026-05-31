@@ -716,7 +716,7 @@
         if (periodos.length === 0) { section.style.display = 'none'; return; }
 
         // 3.0TD / 6.X con maxímetro → optimizador ECONÓMICO (acepta excesos si compensan)
-        if (regimen === 'maximetro' && PRECIOS_POT_2026[tarifaLabel]) {
+        if (regimen === 'maximetro' && PRECIOS_POT_2026[tarifaLabel] && hayPicos) {
             const econPeriodos = buildEconPeriodos(infoData, maxData, tarifaLabel);
             if (econPeriodos.length) {
                 section.style.display = '';
@@ -885,6 +885,10 @@
         records = records.slice(0, 12);
         const precios = PRECIOS_POT_2026[tarifaLabel], teps = TEP_EXC_2026[tarifaLabel];
         if (!precios) return [];
+        // Anualización: el histórico puede cubrir <12 meses; escalamos los excesos a 1 año completo
+        // para que cuadren con el término (que es €/kW·año). Sin esto, con pocos meses el ahorro se infla.
+        const diasHist = records.reduce((s, r) => s + diasPeriodoFactura(r), 0);
+        const factorAnual = diasHist > 0 ? 365 / diasHist : 1;
         const periodos = [];
         for (let i = 1; i <= 6; i++) {
             const meses = records
@@ -892,49 +896,62 @@
                 .filter(m => m.maxKw > 0);
             const cKw = wToKw(infoData[`potenciasContratadasEnWP${i}`]) || 0;
             const pico = meses.length ? Math.max(...meses.map(m => m.maxKw)) : 0;
-            if (cKw > 0 || pico > 0) periodos.push({ i, label: `P${i}`, contratadaKw: cKw, picoKw: pico, meses, precio: precios[i - 1], tep: teps[i - 1] });
+            if (cKw > 0 || pico > 0) periodos.push({ i, label: `P${i}`, contratadaKw: cKw, picoKw: pico, meses, precio: precios[i - 1], tep: teps[i - 1], factorAnual });
         }
         return periodos;
     }
 
-    // Penalización anual por excesos si contratas Pc en este periodo (fórmula tipo 4-5: tep·exceso·días)
+    // Excesos OBSERVADOS en este periodo si contratas Pc (fórmula tipo 4-5: tep·exceso·días, en €)
     function penalPeriodo(meses, Pc, tep) {
         return meses.reduce((s, m) => s + (m.maxKw > Pc ? tep * (m.maxKw - Pc) * m.dias : 0), 0);
     }
-    // Aversión al riesgo: 0=seguro (λ alto → cubre pico) · 50=óptimo real (λ=1) · 100=agresivo (λ<1)
-    function lambdaRiesgo(x) { return x <= 50 ? Math.pow(8, (50 - x) / 50) : Math.pow(3, (50 - x) / 50); }
+    // Excesos ANUALIZADOS a 1 año completo (corrige el sesgo cuando hay <12 meses de maxímetro)
+    function penalAnual(p, Pc) { return penalPeriodo(p.meses, Pc, p.tep) * p.factorAnual; }
+    // Aversión al riesgo: 0=seguro (λ≈1000 → cubre el pico, 0 excesos) · 50=óptimo real (λ=1) · 100=agresivo (λ≈0,33)
+    function lambdaRiesgo(x) { return x <= 50 ? Math.pow(1000, (50 - x) / 50) : Math.pow(3, (50 - x) / 50); }
 
-    function optimoPeriodoEcon(p, lambda, step) {
-        const techo = Math.ceil(p.picoKw / step - 1e-9) * step;
-        const suelo = Math.max(step, Math.round(p.picoKw * 0.5 / step) * step);
-        let best = null;
-        for (let n = 0; ; n++) {
-            const Pc = Math.round((suelo + n * step) * 100) / 100;
-            if (Pc > techo + 1e-9) break;
-            const total = Pc * p.precio + lambda * penalPeriodo(p.meses, Pc, p.tep);
-            if (!best || total < best.total - 1e-9) best = { Pc, total };
-        }
-        return best ? best.Pc : techo;
+    // Coste anual de un periodo si se contrata v kW (término + excesos ponderados por λ)
+    function costePeriodo(p, v, lambda) {
+        return p.picoKw <= 0 ? v * p.precio : v * p.precio + lambda * penalAnual(p, v);
     }
-
+    // Optimización GLOBAL por programación dinámica: minimiza Σ coste_periodo sujeto a la
+    // restricción legal P1≤P2≤…≤P6. El greedy (óptimo por periodo + max acumulado) no garantiza
+    // el óptimo conjunto; la DP sí, y busca en TODO el rango [1, pico] (sin suelo heurístico).
     function computeEcon(periodos, tarifaTipo, x) {
-        const step = tarifaTipo === '3.0' ? 1 : 0.1, lam = lambdaRiesgo(x);
-        let prev = 0;
-        return periodos.map(p => {
-            let opt = p.picoKw > 0 ? optimoPeriodoEcon(p, lam, step) : 0;
-            if (opt < prev) opt = prev;          // restricción legal P1≤P2≤…≤P6
-            prev = opt;
-            const term = opt * p.precio, pen = penalPeriodo(p.meses, opt, p.tep);
-            const nExc = p.meses.filter(m => m.maxKw > opt).length;
-            return Object.assign({}, p, { optimaKw: opt, term, pen, total: term + pen, nExc });
+        const lam = lambdaRiesgo(x), n = periodos.length;
+        if (!n) return [];
+        const lo = 1;
+        const hi = Math.max(1, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
+        const m = hi - lo + 1;
+        let dp = new Array(m);
+        for (let j = 0; j < m; j++) dp[j] = costePeriodo(periodos[0], lo + j, lam);
+        const choices = [];
+        for (let i = 1; i < n; i++) {
+            const pmVal = new Array(m), pmArg = new Array(m);
+            let bV = Infinity, bA = 0;
+            for (let j = 0; j < m; j++) { if (dp[j] < bV) { bV = dp[j]; bA = j; } pmVal[j] = bV; pmArg[j] = bA; }
+            const ndp = new Array(m), arg = new Array(m);
+            for (let j = 0; j < m; j++) { ndp[j] = costePeriodo(periodos[i], lo + j, lam) + pmVal[j]; arg[j] = pmArg[j]; }
+            choices.push(arg); dp = ndp;
+        }
+        let bj = 0; for (let j = 1; j < m; j++) if (dp[j] < dp[bj]) bj = j;
+        const opt = new Array(n); opt[n - 1] = lo + bj;
+        let j = bj;
+        for (let i = n - 1; i >= 1; i--) { j = choices[i - 1][j]; opt[i - 1] = lo + j; }
+        return periodos.map((p, i) => {
+            const o = opt[i];
+            const term = o * p.precio, pen = penalAnual(p, o);
+            const nExc = p.meses.filter(mm => mm.maxKw > o).length;
+            return Object.assign({}, p, { optimaKw: o, term, pen, total: term + pen, nExc });
         });
     }
 
     function renderEconomico(periodos, tarifaTipo, tarifaLabel) {
         riesgoNivel = 50; // cada análisis arranca en el óptimo económico recomendado
         const termActual = periodos.reduce((s, p) => s + p.contratadaKw * p.precio, 0);
-        const excActual = periodos.reduce((s, p) => s + penalPeriodo(p.meses, p.contratadaKw, p.tep), 0);
-        econState = { periodos, tarifaTipo, tarifaLabel, termActual, excActual, costeActual: termActual + excActual };
+        const excActual = periodos.reduce((s, p) => s + penalAnual(p, p.contratadaKw), 0);
+        const nMeses = periodos.reduce((m, p) => Math.max(m, p.meses.length), 0);
+        econState = { periodos, tarifaTipo, tarifaLabel, termActual, excActual, costeActual: termActual + excActual, nMeses };
 
         $('#optimizadorContent').innerHTML = `
             <div id="econHero"></div>
@@ -991,16 +1008,18 @@
                 <div style="text-align:center"><div class="opt-hero__big">${big}<small> ${bigLabel}</small></div></div>
             </div>`;
 
-        const dTerm = st.termActual - termOpt;
+        // Desglose coherente: (ahorro término) + (ahorro excesos) = ahorro neto
+        const dTerm = st.termActual - termOpt;          // + si bajas potencia, − si la subes
+        const dExc = st.excActual - excOpt;             // + si reduces excesos
         $('#econBreakdown').innerHTML = `
-            <div class="econ-bd"><div class="econ-bd__label">Ahorro término fijo</div>
-                <div class="econ-bd__value ${dTerm >= 0 ? 'pos' : 'neg'}">${dTerm >= 0 ? '+' : ''}${fmt(dTerm, 0)} €</div>
-                <div class="econ-bd__sub">pagas potencia 365 días/año</div></div>
-            <div class="econ-bd"><div class="econ-bd__label">Excesos esperados</div>
-                <div class="econ-bd__value ${excOpt > 1 ? 'neg' : 'pos'}">${excOpt > 1 ? '−' : ''}${fmt(excOpt, 0)} €</div>
-                <div class="econ-bd__sub">${nExc} al año (si se repite)</div></div>
+            <div class="econ-bd"><div class="econ-bd__label">${dTerm >= 0 ? 'Ahorro término fijo' : 'Coste extra de potencia'}</div>
+                <div class="econ-bd__value ${dTerm >= 0 ? 'pos' : 'neg'}">${dTerm >= 0 ? '+' : '−'}${fmt(Math.abs(dTerm), 0)} €</div>
+                <div class="econ-bd__sub">${dTerm >= 0 ? 'bajas potencia contratada' : 'subes potencia para evitar excesos'}</div></div>
+            <div class="econ-bd"><div class="econ-bd__label">Ahorro en excesos</div>
+                <div class="econ-bd__value ${dExc >= 0 ? 'pos' : 'neg'}">${dExc >= 0 ? '+' : '−'}${fmt(Math.abs(dExc), 0)} €</div>
+                <div class="econ-bd__sub">menos penalizaciones (anual)</div></div>
             <div class="econ-bd"><div class="econ-bd__label">Ahorro neto</div>
-                <div class="econ-bd__value ${ahorro >= 0 ? 'pos' : 'neg'}">${ahorro >= 0 ? '+' : ''}${fmt(ahorro, 0)} €/año</div>
+                <div class="econ-bd__value ${ahorro >= 0 ? 'pos' : 'neg'}">${ahorro >= 0 ? '+' : '−'}${fmt(Math.abs(ahorro), 0)} €/año</div>
                 <div class="econ-bd__sub">vs lo que pagas hoy</div></div>`;
 
         $('#econBody').innerHTML = filas.map(f => `
@@ -1014,7 +1033,10 @@
             </tr>`).join('');
 
         const es6X = st.tarifaTipo === '6.X';
-        $('#econNote').innerHTML = 'Backtest sobre tu maxímetro real de los últimos 12 meses con precios CNMC 2026 (término de potencia + excesos). '
+        const avisoMeses = st.nMeses < 10
+            ? `<strong>⚠️ Solo ${st.nMeses} ${st.nMeses === 1 ? 'mes' : 'meses'} de histórico:</strong> los excesos se han anualizado, pero la recomendación puede no captar picos estacionales (verano/invierno). Tómala con cautela y deja más margen. `
+            : '';
+        $('#econNote').innerHTML = avisoMeses + 'Backtest sobre tu maxímetro real de los últimos 12 meses con precios CNMC 2026 (término de potencia + excesos). '
             + (es6X
                 ? '<strong>⚠️ En ' + escapeHtml(st.tarifaLabel) + ' la ley calcula los excesos cuarto-horariamente</strong> (dato que SIPS no da): aquí los excesos son una estimación orientativa, no el importe exacto. '
                 : 'En 3.0TD el cálculo es exacto: la facturación oficial usa el mismo maxímetro mensual por periodo. ')
