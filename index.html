@@ -226,6 +226,23 @@
         }
         .opt-note strong { color: var(--text); }
 
+        /* -- Calculadora por electrodomésticos (2.0TD) -- */
+        .calc-block { margin-bottom: 1.25rem; }
+        .calc-q { font-size: .9rem; font-weight: 600; margin-bottom: .6rem; }
+        .calc-personas, .calc-uso { max-width: 380px; }
+        .calc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; }
+        .calc-chip {
+            padding: .6rem .7rem; border: 2px solid var(--border); border-radius: var(--radius);
+            background: var(--surface); color: var(--text); font-size: .8rem; font-weight: 600;
+            cursor: pointer; text-align: left; transition: border-color .15s, background .15s, color .15s;
+        }
+        .calc-chip:hover { border-color: var(--primary); }
+        .calc-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .calc-splits { margin-top: .75rem; font-size: .82rem; color: var(--text-muted); display: flex; align-items: center; gap: .5rem; }
+        .calc-splits input { width: 64px; padding: .35rem .5rem; border: 2px solid var(--border); border-radius: 8px; font-size: .9rem; }
+        .calc-detail { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
+        .calc-detail .data-card { flex: 1; min-width: 150px; }
+
         @media (max-width: 600px) {
             .search-row { flex-direction: column; }
             .btn { width: 100%; }
@@ -349,6 +366,7 @@
 
     let selectedLinea = 'electricidad';
     let optimizerState = null;
+    let calcState = null;
     let margenSeguridad = 0.10; // colchón sobre el pico real; ajustable con el slider
 
     // Toggle buttons
@@ -664,12 +682,27 @@
             const pKw = picos[i] > 0 ? picos[i] / 1000 : 0;
             if (cKw > 0 || pKw > 0) periodos.push({ i, label: `P${i}`, contratadaKw: cKw, picoKw: pKw });
         }
-        if (periodos.length === 0) { section.style.display = 'none'; return; }
 
         let regimen;
         if (tarifaTipo === '2.0') regimen = 'icp';
         else if (tarifaTipo === '3.0' || tarifaTipo === '6.X') regimen = 'maximetro';
         else regimen = periodos.length <= 2 ? 'icp' : 'maximetro';
+
+        const hayPicos = periodos.some(p => p.picoKw > 0);
+
+        // 2.0TD sin maxímetro en SIPS → calculadora por electrodomésticos (plan B)
+        if (regimen === 'icp' && !hayPicos) {
+            let contratadaActual = 0;
+            for (let i = 1; i <= 6; i++) {
+                const c = wToKw(infoData[`potenciasContratadasEnWP${i}`]) || 0;
+                if (c > contratadaActual) contratadaActual = c;
+            }
+            section.style.display = '';
+            renderCalculadora(contratadaActual, tarifaLabel);
+            return;
+        }
+
+        if (periodos.length === 0) { section.style.display = 'none'; return; }
 
         optimizerState = {
             periodos, regimen, tarifaLabel,
@@ -796,6 +829,167 @@
         noteEl.innerHTML = 'Barras: <strong style="color:#94a3b8">contratada</strong> · <strong style="color:var(--danger)">pico máx</strong> · <strong style="color:var(--accent)">óptima</strong>. '
             + 'Cálculo sobre el maxímetro de los últimos 12 meses; la óptima cubre el pico real + el margen elegido y respeta la regla legal de potencias ascendentes (P1≤P2≤…≤P6). '
             + ctrl + ' En el sistema TD el término de potencia se factura siempre por la contratada (sin banda 85-105%). El cambio de potencia es gratis una vez cada 12 meses.';
+    }
+
+    // -- Calculadora de potencia por electrodomésticos (2.0TD sin maxímetro) --
+    // Modelo "carga simultánea con suelo de seguridad" (verificado contra REBT ITC-BT-25 y método OCU).
+    const ELECTRODOMESTICOS = [
+        { k: 'lavadora', label: 'Lavadora', w: 2000, ded: false },
+        { k: 'lavavajillas', label: 'Lavavajillas', w: 2000, ded: false },
+        { k: 'secadora', label: 'Secadora', w: 2500, ded: false },
+        { k: 'horno', label: 'Horno eléctrico', w: 2200, ded: false },
+        { k: 'vitro', label: 'Vitrocerámica', w: 1500, ded: false },
+        { k: 'induccion', label: 'Placa de inducción', w: 3500, ded: true },
+        { k: 'microondas', label: 'Microondas', w: 1200, ded: false },
+        { k: 'termo', label: 'Termo eléctrico (ACS)', w: 1800, ded: false },
+        { k: 'calentador', label: 'Calentador instant. / ducha eléctrica', w: 4000, ded: true },
+        { k: 'aire', label: 'Aire acondicionado (por split)', w: 1500, ded: false },
+        { k: 'calefaccion', label: 'Calefacción eléctrica / radiador', w: 2000, ded: false },
+        { k: 'bombacalor', label: 'Bomba de calor / aerotermia', w: 2500, ded: false },
+        { k: 've37', label: 'Coche eléctrico — carga 3,7 kW', w: 3700, ded: true },
+        { k: 've74', label: 'Coche eléctrico — carga 7,4 kW', w: 7400, ded: true }
+    ];
+    const ESCALONES_20 = [3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5];
+
+    function factorSim(personas, intensivo) {
+        let f = personas <= 2 ? 0.30 : (personas === 3 ? 0.35 : 0.40);
+        if (intensivo) f += 0.05;
+        return Math.min(f, 0.50);
+    }
+    function escalonPot(kw) {
+        for (const e of ESCALONES_20) if (e >= kw - 0.001) return e;
+        return 15;
+    }
+    function calcularPotencia(aparatos, personas, intensivo) {
+        const base = 1.0, f = factorSim(personas, intensivo);
+        const norm = aparatos.filter(a => !a.ded).map(a => a.w / 1000);
+        const ded = aparatos.filter(a => a.ded).map(a => a.w / 1000).sort((a, b) => b - a);
+        const sN = norm.reduce((s, w) => s + w, 0);
+        const sD = ded.reduce((s, w, i) => s + w * (i === 0 ? 1.0 : 0.5), 0);
+        const maxNorm = norm.reduce((m, w) => Math.max(m, w), 0);
+        const todos = aparatos.map(a => a.w / 1000);
+        const pSim = base + sN * f + sD;
+        const pSuelo = sD + maxNorm + 0.2;
+        const pMax = (todos.length ? Math.max(...todos) : 0) + 0.5;
+        const P = Math.max(pSim, pSuelo, pMax, base);
+        return { kW: Math.round(P * 100) / 100, escalon: escalonPot(P), afinado: Math.ceil(P * 10) / 10, factor: f };
+    }
+
+    function renderCalculadora(contratadaActual, tarifaLabel) {
+        calcState = { personas: 2, intensivo: false, sel: {}, splits: 1, contratadaActual };
+        const cont = $('#optimizadorContent');
+        cont.innerHTML = `
+            <div class="opt-note" style="margin-bottom:1.25rem">
+                Este suministro <strong>${escapeHtml(tarifaLabel || '2.0TD')}</strong> no tiene maxímetro en SIPS (control por ICP).
+                Estima la potencia óptima respondiendo unos datos rápidos.${contratadaActual > 0 ? ` Contratada actual: <strong>${fmt(contratadaActual)} kW</strong>.` : ''}
+            </div>
+            <div class="calc-block">
+                <div class="calc-q">¿Cuántas personas viven en la vivienda?</div>
+                <div class="toggle-group calc-personas" id="calcPersonas">
+                    <button class="toggle-btn active" data-p="2">1–2</button>
+                    <button class="toggle-btn" data-p="3">3</button>
+                    <button class="toggle-btn" data-p="4">4 o más</button>
+                </div>
+            </div>
+            <div class="calc-block">
+                <div class="calc-q">¿Qué electrodomésticos de alta potencia tiene?</div>
+                <div class="calc-grid" id="calcGrid"></div>
+                <div class="calc-splits" id="calcSplits" style="display:none">
+                    Nº de splits de aire acondicionado:
+                    <input type="number" id="calcSplitsInput" min="1" max="8" value="1">
+                </div>
+            </div>
+            <div class="calc-block">
+                <div class="calc-q">Uso de la vivienda</div>
+                <div class="toggle-group calc-uso" id="calcUso">
+                    <button class="toggle-btn active" data-u="0">Uso normal</button>
+                    <button class="toggle-btn" data-u="1">Mucho tiempo en casa</button>
+                </div>
+            </div>
+            <div id="calcResult"></div>`;
+
+        $('#calcGrid').innerHTML = ELECTRODOMESTICOS
+            .map(a => `<button class="calc-chip" data-k="${a.k}">${escapeHtml(a.label)}</button>`).join('');
+
+        $('#calcPersonas').addEventListener('click', (e) => {
+            const b = e.target.closest('.toggle-btn'); if (!b) return;
+            $('#calcPersonas').querySelectorAll('.toggle-btn').forEach(x => x.classList.remove('active'));
+            b.classList.add('active'); calcState.personas = parseInt(b.dataset.p, 10); recalcularCalc();
+        });
+        $('#calcUso').addEventListener('click', (e) => {
+            const b = e.target.closest('.toggle-btn'); if (!b) return;
+            $('#calcUso').querySelectorAll('.toggle-btn').forEach(x => x.classList.remove('active'));
+            b.classList.add('active'); calcState.intensivo = b.dataset.u === '1'; recalcularCalc();
+        });
+        $('#calcGrid').addEventListener('click', (e) => {
+            const b = e.target.closest('.calc-chip'); if (!b) return;
+            const k = b.dataset.k;
+            calcState.sel[k] = !calcState.sel[k];
+            b.classList.toggle('active', calcState.sel[k]);
+            if (k === 'aire') $('#calcSplits').style.display = calcState.sel['aire'] ? 'flex' : 'none';
+            recalcularCalc();
+        });
+        $('#calcSplitsInput').addEventListener('input', (e) => {
+            calcState.splits = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
+            recalcularCalc();
+        });
+        recalcularCalc();
+    }
+
+    function recalcularCalc() {
+        const aparatos = [];
+        ELECTRODOMESTICOS.forEach(a => {
+            if (calcState.sel[a.k]) aparatos.push({ w: a.k === 'aire' ? a.w * (calcState.splits || 1) : a.w, ded: a.ded });
+        });
+        const r = calcularPotencia(aparatos, calcState.personas, calcState.intensivo);
+        const rec = r.escalon, ca = calcState.contratadaActual;
+
+        let estado, titulo, texto, big, bigLabel;
+        if (ca > 0 && rec < ca - 0.05) {
+            estado = 'down'; titulo = 'Puedes bajar la potencia';
+            big = fmt(ca - rec, 2); bigLabel = 'kW menos';
+            texto = `Con tu equipamiento, ${fmt(rec)} kW cubren tu uso. Tienes contratados ${fmt(ca)} kW: hay margen para bajar y ahorrar en el término de potencia.`;
+        } else if (ca > 0 && rec > ca + 0.05) {
+            estado = 'up'; titulo = 'Te conviene subir la potencia';
+            big = fmt(rec - ca, 2); bigLabel = 'kW más';
+            texto = `Con este equipamiento podrías quedarte corto y el ICP cortaría el suministro. Recomendado ${fmt(rec)} kW frente a los ${fmt(ca)} kW actuales.`;
+        } else if (ca > 0) {
+            estado = 'ok'; titulo = 'Potencia bien ajustada';
+            big = '✓'; bigLabel = '';
+            texto = `Tus ${fmt(ca)} kW encajan con el equipamiento indicado.`;
+        } else {
+            estado = 'down'; titulo = 'Potencia recomendada';
+            big = fmt(rec); bigLabel = 'kW';
+            texto = 'Estimación según el equipamiento indicado.';
+        }
+
+        const icon = estado === 'up'
+            ? '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'
+            : (estado === 'down' ? '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>' : '<path d="M20 6 9 17l-5-5"/>');
+        $('#calcResult').innerHTML = `
+            <div class="opt-hero ${estado}" style="margin-top:1.25rem">
+                <div class="opt-hero__icon">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>
+                </div>
+                <div class="opt-hero__body">
+                    <div class="opt-hero__title">${escapeHtml(titulo)}</div>
+                    <div class="opt-hero__text">${escapeHtml(texto)}</div>
+                </div>
+                ${bigLabel ? `<div style="text-align:center"><div class="opt-hero__big">${big}<small> ${bigLabel}</small></div></div>` : `<div class="opt-hero__big">${big}</div>`}
+            </div>
+            <div class="calc-detail">
+                <div class="data-card"><div class="data-card__label">Escalón recomendado</div>
+                    <div class="data-card__value" style="color:var(--accent)">${fmt(rec)}<small>kW</small></div></div>
+                <div class="data-card"><div class="data-card__label">Afinable con tu contador</div>
+                    <div class="data-card__value">${fmt(r.afinado)}<small>kW</small></div>
+                    <div class="data-card__sub">en múltiplos de 0,1 kW (telegestión)</div></div>
+                <div class="data-card"><div class="data-card__label">Demanda simultánea estimada</div>
+                    <div class="data-card__value">${fmt(r.kW)}<small>kW</small></div>
+                    <div class="data-card__sub">factor de simultaneidad ${fmt(r.factor * 100, 0)}%</div></div>
+            </div>
+            <div class="opt-note" style="margin-top:1rem">
+                Estimación orientativa por electrodomésticos (no hay maxímetro en SIPS). En 2.0TD el ICP corta si te pasas, así que conviene dejar el margen del escalón. Si dispones de la <strong>potencia máxima registrada</strong> de la factura (últimos 12 meses), ese dato real manda sobre esta estimación. El cambio de potencia es gratis una vez cada 12 meses.
+            </div>`;
     }
 
     // -- Main search --
