@@ -974,11 +974,11 @@
             <div id="econHero"></div>
             <div class="opt-margin">
                 <div class="opt-margin__head">
-                    <span class="opt-margin__label">Nivel de riesgo de excesos</span>
+                    <span class="opt-margin__label">Estrategia de potencia</span>
                     <span class="opt-margin__value" id="econRiesgoLabel"></span>
                 </div>
                 <input type="range" id="econSlider" min="0" max="100" step="1" value="${riesgoNivel}">
-                <div class="opt-margin__hint">⭐ Arranca en el <strong>máximo ahorro</strong>. 🛡️ Seguro (cubre el pico, 0 excesos) &nbsp;·&nbsp; 🎯 Óptimo &nbsp;·&nbsp; 🔥 Agresivo (apuesta a un año más suave)</div>
+                <div class="opt-margin__hint"><strong>⭐ Recomendado: la potencia optimizada</strong> (mínimo coste = máximo ahorro al año). ◀ a la izquierda, más conservador: cubrir el pico sin optimizar (0 excesos, pero pagas más) · a la derecha, más agresivo: apuesta a un año más suave ▶</div>
             </div>
             <div class="econ-breakdown" id="econBreakdown"></div>
             <div class="opt-table-wrap"><table class="opt-table"><thead><tr>
@@ -1002,8 +1002,8 @@
         const ahorro = st.costeActual - costeOpt;
 
         $('#econRiesgoLabel').textContent = riesgoNivel === st.riesgoOptimo
-            ? '⭐ Máximo ahorro'
-            : (riesgoNivel < 34 ? '🛡️ Seguro' : (riesgoNivel < 67 ? '🎯 Óptimo económico' : '🔥 Agresivo'));
+            ? '⭐ Potencia optimizada'
+            : (riesgoNivel < st.riesgoOptimo ? '🛡️ Más conservador (cubrir pico)' : '🔥 Más agresivo');
 
         let estado, titulo, texto, big, bigLabel;
         if (ahorro >= 1) {
