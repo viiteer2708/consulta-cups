@@ -243,6 +243,15 @@
         .calc-detail { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
         .calc-detail .data-card { flex: 1; min-width: 150px; }
 
+        /* -- Optimizador económico: desglose -- */
+        .econ-breakdown { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .econ-bd { flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem 1rem; }
+        .econ-bd__label { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 600; margin-bottom: .3rem; }
+        .econ-bd__value { font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
+        .econ-bd__value.pos { color: var(--accent); }
+        .econ-bd__value.neg { color: var(--danger); }
+        .econ-bd__sub { font-size: .72rem; color: var(--text-muted); margin-top: .2rem; }
+
         @media (max-width: 600px) {
             .search-row { flex-direction: column; }
             .btn { width: 100%; }
@@ -367,6 +376,8 @@
     let selectedLinea = 'electricidad';
     let optimizerState = null;
     let calcState = null;
+    let econState = null;
+    let riesgoNivel = 50; // 0 = seguro (cubre pico) · 50 = óptimo económico · 100 = agresivo
     let margenSeguridad = 0.10; // colchón sobre el pico real; ajustable con el slider
 
     // Toggle buttons
@@ -704,6 +715,16 @@
 
         if (periodos.length === 0) { section.style.display = 'none'; return; }
 
+        // 3.0TD / 6.X con maxímetro → optimizador ECONÓMICO (acepta excesos si compensan)
+        if (regimen === 'maximetro' && PRECIOS_POT_2026[tarifaLabel]) {
+            const econPeriodos = buildEconPeriodos(infoData, maxData, tarifaLabel);
+            if (econPeriodos.length) {
+                section.style.display = '';
+                renderEconomico(econPeriodos, tarifaTipo || '3.0', tarifaLabel);
+                return;
+            }
+        }
+
         optimizerState = {
             periodos, regimen, tarifaLabel,
             tarifaTipo: tarifaTipo || (regimen === 'icp' ? '2.0' : '3.0')
@@ -829,6 +850,175 @@
         noteEl.innerHTML = 'Barras: <strong style="color:#94a3b8">contratada</strong> · <strong style="color:var(--danger)">pico máx</strong> · <strong style="color:var(--accent)">óptima</strong>. '
             + 'Cálculo sobre el maxímetro de los últimos 12 meses; la óptima cubre el pico real + el margen elegido y respeta la regla legal de potencias ascendentes (P1≤P2≤…≤P6). '
             + ctrl + ' En el sistema TD el término de potencia se factura siempre por la contratada (sin banda 85-105%). El cambio de potencia es gratis una vez cada 12 meses.';
+    }
+
+    // -- Optimizador ECONÓMICO (3.0TD / 6.X): minimiza término + excesos sobre el histórico --
+    // Precios CNMC 2026 verificados contra BOE (peaje+cargo €/kW·año y término de exceso €/kW·día tipo 4-5).
+    const PRECIOS_POT_2026 = {
+        '3.0TD': [20.3769, 10.6176, 4.4815, 3.8863, 2.5139, 1.4423],
+        '6.1TD': [29.5954, 15.5147, 6.8019, 5.3938, 2.1251, 1.0042],
+        '6.2TD': [20.1036, 11.1157, 3.7091, 2.7282, 1.2656, 0.6054],
+        '6.3TD': [13.0534, 7.5879, 3.0621, 2.3321, 1.0100, 0.4814],
+        '6.4TD': [7.9054, 4.5858, 1.4600, 1.1586, 0.4928, 0.2305]
+    };
+    const TEP_EXC_2026 = {
+        '3.0TD': [0.171373, 0.090584, 0.028721, 0.021891, 0.006142, 0.006142],
+        '6.1TD': [0.275735, 0.146094, 0.054668, 0.038455, 0.000817, 0.000722],
+        '6.2TD': [0.173206, 0.097562, 0.025825, 0.015703, 0.000612, 0.000542],
+        '6.3TD': [0.238584, 0.143616, 0.048105, 0.031355, 0.001018, 0.000889],
+        '6.4TD': [0.186364, 0.111026, 0.027859, 0.019355, 0.000575, 0.000394]
+    };
+
+    function diasPeriodoFactura(r) {
+        const a = r.fechaInicioMesConsumo, b = r.fechaFinMesConsumo;
+        if (a && b && a.length >= 10 && b.length >= 10) {
+            const d = (new Date(b) - new Date(a)) / 86400000;
+            if (d >= 20 && d <= 70) return Math.round(d);
+        }
+        return 30.4;
+    }
+
+    function buildEconPeriodos(infoData, maxData, tarifaLabel) {
+        let records = Array.isArray(maxData) ? maxData : (maxData ? [maxData] : []);
+        records = records.filter(r => r && r.cups);
+        records.sort((a, b) => (b.fechaFinMesConsumo || '').localeCompare(a.fechaFinMesConsumo || ''));
+        records = records.slice(0, 12);
+        const precios = PRECIOS_POT_2026[tarifaLabel], teps = TEP_EXC_2026[tarifaLabel];
+        if (!precios) return [];
+        const periodos = [];
+        for (let i = 1; i <= 6; i++) {
+            const meses = records
+                .map(r => ({ maxKw: (r[`potenciaDemandadaEnWP${i}`] || 0) / 1000, dias: diasPeriodoFactura(r) }))
+                .filter(m => m.maxKw > 0);
+            const cKw = wToKw(infoData[`potenciasContratadasEnWP${i}`]) || 0;
+            const pico = meses.length ? Math.max(...meses.map(m => m.maxKw)) : 0;
+            if (cKw > 0 || pico > 0) periodos.push({ i, label: `P${i}`, contratadaKw: cKw, picoKw: pico, meses, precio: precios[i - 1], tep: teps[i - 1] });
+        }
+        return periodos;
+    }
+
+    // Penalización anual por excesos si contratas Pc en este periodo (fórmula tipo 4-5: tep·exceso·días)
+    function penalPeriodo(meses, Pc, tep) {
+        return meses.reduce((s, m) => s + (m.maxKw > Pc ? tep * (m.maxKw - Pc) * m.dias : 0), 0);
+    }
+    // Aversión al riesgo: 0=seguro (λ alto → cubre pico) · 50=óptimo real (λ=1) · 100=agresivo (λ<1)
+    function lambdaRiesgo(x) { return x <= 50 ? Math.pow(8, (50 - x) / 50) : Math.pow(3, (50 - x) / 50); }
+
+    function optimoPeriodoEcon(p, lambda, step) {
+        const techo = Math.ceil(p.picoKw / step - 1e-9) * step;
+        const suelo = Math.max(step, Math.round(p.picoKw * 0.5 / step) * step);
+        let best = null;
+        for (let n = 0; ; n++) {
+            const Pc = Math.round((suelo + n * step) * 100) / 100;
+            if (Pc > techo + 1e-9) break;
+            const total = Pc * p.precio + lambda * penalPeriodo(p.meses, Pc, p.tep);
+            if (!best || total < best.total - 1e-9) best = { Pc, total };
+        }
+        return best ? best.Pc : techo;
+    }
+
+    function computeEcon(periodos, tarifaTipo, x) {
+        const step = tarifaTipo === '3.0' ? 1 : 0.1, lam = lambdaRiesgo(x);
+        let prev = 0;
+        return periodos.map(p => {
+            let opt = p.picoKw > 0 ? optimoPeriodoEcon(p, lam, step) : 0;
+            if (opt < prev) opt = prev;          // restricción legal P1≤P2≤…≤P6
+            prev = opt;
+            const term = opt * p.precio, pen = penalPeriodo(p.meses, opt, p.tep);
+            const nExc = p.meses.filter(m => m.maxKw > opt).length;
+            return Object.assign({}, p, { optimaKw: opt, term, pen, total: term + pen, nExc });
+        });
+    }
+
+    function renderEconomico(periodos, tarifaTipo, tarifaLabel) {
+        riesgoNivel = 50; // cada análisis arranca en el óptimo económico recomendado
+        const termActual = periodos.reduce((s, p) => s + p.contratadaKw * p.precio, 0);
+        const excActual = periodos.reduce((s, p) => s + penalPeriodo(p.meses, p.contratadaKw, p.tep), 0);
+        econState = { periodos, tarifaTipo, tarifaLabel, termActual, excActual, costeActual: termActual + excActual };
+
+        $('#optimizadorContent').innerHTML = `
+            <div id="econHero"></div>
+            <div class="opt-margin">
+                <div class="opt-margin__head">
+                    <span class="opt-margin__label">Nivel de riesgo de excesos</span>
+                    <span class="opt-margin__value" id="econRiesgoLabel"></span>
+                </div>
+                <input type="range" id="econSlider" min="0" max="100" step="1" value="${riesgoNivel}">
+                <div class="opt-margin__hint">🛡️ Seguro (cubre el pico, 0 excesos) &nbsp;·&nbsp; 🎯 Óptimo económico &nbsp;·&nbsp; 🔥 Agresivo (apuesta a un año más suave)</div>
+            </div>
+            <div class="econ-breakdown" id="econBreakdown"></div>
+            <div class="opt-table-wrap"><table class="opt-table"><thead><tr>
+                <th>Periodo</th><th>Contratada</th><th>Pico 12m</th><th>Óptima</th><th>Excesos/año</th><th>Coste/año</th>
+            </tr></thead><tbody id="econBody"></tbody></table></div>
+            <div class="opt-note" id="econNote"></div>`;
+
+        const sl = $('#econSlider');
+        sl.addEventListener('input', () => { riesgoNivel = parseInt(sl.value, 10); updateEconomico(); });
+        updateEconomico();
+    }
+
+    function updateEconomico() {
+        const st = econState; if (!st) return;
+        const filas = computeEcon(st.periodos, st.tarifaTipo, riesgoNivel);
+        const termOpt = filas.reduce((a, f) => a + f.term, 0);
+        const excOpt = filas.reduce((a, f) => a + f.pen, 0);
+        const costeOpt = termOpt + excOpt;
+        const nExc = filas.reduce((a, f) => a + f.nExc, 0);
+        const ahorro = st.costeActual - costeOpt;
+
+        $('#econRiesgoLabel').textContent = riesgoNivel < 34 ? '🛡️ Seguro' : (riesgoNivel < 67 ? '🎯 Óptimo económico' : '🔥 Agresivo');
+
+        let estado, titulo, texto, big, bigLabel;
+        if (ahorro >= 1) {
+            estado = 'down'; titulo = 'Ahorro optimizando la potencia';
+            big = fmt(ahorro, 0); bigLabel = '€/año';
+            texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año en término de potencia${st.excActual > 1 ? ' y excesos' : ''}. Con esta configuración pagarías ~${fmt(costeOpt, 0)} €/año.`;
+        } else {
+            estado = 'up'; titulo = 'Esta configuración no ahorra';
+            big = fmt(ahorro, 0); bigLabel = '€/año';
+            texto = 'A este nivel de riesgo los excesos esperados superan el ahorro del término fijo. Mueve el control hacia «Seguro».';
+        }
+        const icon = estado === 'up'
+            ? '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'
+            : '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>';
+        $('#econHero').innerHTML = `
+            <div class="opt-hero ${estado}">
+                <div class="opt-hero__icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
+                <div class="opt-hero__body">
+                    <div class="opt-hero__title">${escapeHtml(titulo)}</div>
+                    <div class="opt-hero__text">${escapeHtml(texto)}</div>
+                </div>
+                <div style="text-align:center"><div class="opt-hero__big">${big}<small> ${bigLabel}</small></div></div>
+            </div>`;
+
+        const dTerm = st.termActual - termOpt;
+        $('#econBreakdown').innerHTML = `
+            <div class="econ-bd"><div class="econ-bd__label">Ahorro término fijo</div>
+                <div class="econ-bd__value ${dTerm >= 0 ? 'pos' : 'neg'}">${dTerm >= 0 ? '+' : ''}${fmt(dTerm, 0)} €</div>
+                <div class="econ-bd__sub">pagas potencia 365 días/año</div></div>
+            <div class="econ-bd"><div class="econ-bd__label">Excesos esperados</div>
+                <div class="econ-bd__value ${excOpt > 1 ? 'neg' : 'pos'}">${excOpt > 1 ? '−' : ''}${fmt(excOpt, 0)} €</div>
+                <div class="econ-bd__sub">${nExc} al año (si se repite)</div></div>
+            <div class="econ-bd"><div class="econ-bd__label">Ahorro neto</div>
+                <div class="econ-bd__value ${ahorro >= 0 ? 'pos' : 'neg'}">${ahorro >= 0 ? '+' : ''}${fmt(ahorro, 0)} €/año</div>
+                <div class="econ-bd__sub">vs lo que pagas hoy</div></div>`;
+
+        $('#econBody').innerHTML = filas.map(f => `
+            <tr>
+                <td><strong>${f.label}</strong></td>
+                <td class="num">${fmt(f.contratadaKw)}</td>
+                <td class="num">${f.picoKw > 0 ? fmt(f.picoKw) : '—'}</td>
+                <td class="num opt-recommended">${f.picoKw > 0 ? fmt(f.optimaKw) : '—'}</td>
+                <td>${f.nExc > 0 ? `<span class="opt-badge up">${f.nExc} mes${f.nExc > 1 ? 'es' : ''}</span>` : '<span class="opt-badge ok">0</span>'}</td>
+                <td class="num">${fmt(f.total, 0)} €</td>
+            </tr>`).join('');
+
+        const es6X = st.tarifaTipo === '6.X';
+        $('#econNote').innerHTML = 'Backtest sobre tu maxímetro real de los últimos 12 meses con precios CNMC 2026 (término de potencia + excesos). '
+            + (es6X
+                ? '<strong>⚠️ En ' + escapeHtml(st.tarifaLabel) + ' la ley calcula los excesos cuarto-horariamente</strong> (dato que SIPS no da): aquí los excesos son una estimación orientativa, no el importe exacto. '
+                : 'En 3.0TD el cálculo es exacto: la facturación oficial usa el mismo maxímetro mensual por periodo. ')
+            + 'La idea: aceptar excesos puntuales puede salir más barato que pagar término de potencia de más todo el año. El modelo asume que el próximo año se parece al anterior. Potencias ascendentes P1≤…≤P6. El cambio de potencia es gratis una vez cada 12 meses.';
     }
 
     // -- Calculadora de potencia por electrodomésticos (2.0TD sin maxímetro) --
