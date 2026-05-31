@@ -916,23 +916,26 @@
         return p.picoKw <= 0 ? v * p.precio : v * p.precio + lambda * penalAnual(p, v);
     }
     const MAX_EXCESOS = 3;   // meses pico que se pueden "afeitar" como máximo (juego: pasarse 1-2 veces)
-    // Suelo realista por periodo: nunca recomendar por debajo de la (MAX_EXCESOS+1)-ésima demanda más
-    // alta (→ a lo sumo 3 meses de exceso) ni del mínimo legal de la tarifa. Evita infracontratar.
-    function sueloPeriodo(p, minLegal) {
-        if (!p.meses.length) return minLegal;
+    // Suelo de demanda por periodo: nunca recomendar por debajo de la (MAX_EXCESOS+1)-ésima demanda más
+    // alta (→ a lo sumo 3 meses de exceso). NO hay mínimo legal por periodo (Circular CNMC 3/2020 art.
+    // 6.2.b): P1..P5 pueden ser tan bajas como 1 kW; solo importa la monotonía y que P6 supere 15 en 3.0TD.
+    function sueloPeriodo(p) {
+        if (!p.meses.length) return 1;
         const desc = p.meses.map(m => m.maxKw).slice().sort((a, b) => b - a);
         const nivel = desc[Math.min(MAX_EXCESOS, desc.length - 1)]; // (MAX_EXCESOS+1)-ésima más alta
-        return Math.max(minLegal, Math.ceil(nivel - 1e-9));
+        return Math.max(1, Math.ceil(nivel - 1e-9));
     }
     // Optimización GLOBAL por programación dinámica: minimiza Σ coste_periodo sujeto a P1≤P2≤…≤P6,
     // restringida al rango realista [suelo de demanda, pico] de cada periodo.
     function computeEcon(periodos, tarifaTipo, x) {
         const lam = lambdaRiesgo(x), n = periodos.length;
         if (!n) return [];
-        const minLegal = tarifaTipo === '3.0' ? 15 : 1; // 3.0TD: la potencia contratada es >15 kW
-        const suelos = periodos.map(p => sueloPeriodo(p, minLegal));
+        const suelos = periodos.map(p => sueloPeriodo(p));
+        // 3.0TD: única restricción de mínimo → la potencia MAYOR (P6, último por monotonía) debe superar
+        // 15 kW para seguir en 3.0TD. Los demás periodos no tienen mínimo. 6.X: ni eso (definida por tensión).
+        if (tarifaTipo === '3.0') suelos[n - 1] = Math.max(suelos[n - 1], 16);
         const lo = Math.min(...suelos);
-        const hi = Math.max(minLegal, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
+        const hi = Math.max(...suelos, 1, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
         const m = hi - lo + 1;
         const coste = (i, v) => v < suelos[i] ? Infinity : costePeriodo(periodos[i], v, lam);
         let dp = new Array(m);
