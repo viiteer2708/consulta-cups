@@ -915,27 +915,18 @@
     function costePeriodo(p, v, lambda) {
         return p.picoKw <= 0 ? v * p.precio : v * p.precio + lambda * penalAnual(p, v);
     }
-    const MAX_EXCESOS = 3;   // meses pico que se pueden "afeitar" como máximo (juego: pasarse 1-2 veces)
-    // Suelo de demanda por periodo: nunca recomendar por debajo de la (MAX_EXCESOS+1)-ésima demanda más
-    // alta (→ a lo sumo 3 meses de exceso). NO hay mínimo legal por periodo (Circular CNMC 3/2020 art.
-    // 6.2.b): P1..P5 pueden ser tan bajas como 1 kW; solo importa la monotonía y que P6 supere 15 en 3.0TD.
-    function sueloPeriodo(p) {
-        if (!p.meses.length) return 1;
-        const desc = p.meses.map(m => m.maxKw).slice().sort((a, b) => b - a);
-        const nivel = desc[Math.min(MAX_EXCESOS, desc.length - 1)]; // (MAX_EXCESOS+1)-ésima más alta
-        return Math.max(1, Math.ceil(nivel - 1e-9));
-    }
-    // Optimización GLOBAL por programación dinámica: minimiza Σ coste_periodo sujeto a P1≤P2≤…≤P6,
-    // restringida al rango realista [suelo de demanda, pico] de cada periodo.
+    // Optimización GLOBAL por programación dinámica: minimiza el COSTE TOTAL (término + excesos reales,
+    // ponderados por λ) con la ÚNICA restricción legal: monotonía P1≤…≤P6 y, en 3.0TD, P6>15 kW.
+    // NO hay límite de excesos: si infracontratar y pagar penalizaciones sale más barato, esa ES la mejor
+    // opción (objetivo = coste mínimo). Como la contratada actual siempre cae dentro del espacio de
+    // búsqueda, el óptimo nunca cuesta más que lo que se paga hoy → el ahorro nunca es negativo.
     function computeEcon(periodos, tarifaTipo, x) {
         const lam = lambdaRiesgo(x), n = periodos.length;
         if (!n) return [];
-        const suelos = periodos.map(p => sueloPeriodo(p));
-        // 3.0TD: única restricción de mínimo → la potencia MAYOR (P6, último por monotonía) debe superar
-        // 15 kW para seguir en 3.0TD. Los demás periodos no tienen mínimo. 6.X: ni eso (definida por tensión).
-        if (tarifaTipo === '3.0') suelos[n - 1] = Math.max(suelos[n - 1], 16);
-        const lo = Math.min(...suelos);
-        const hi = Math.max(...suelos, 1, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
+        const suelos = periodos.map(() => 1);          // cada periodo puede bajar hasta 1 kW (sin suelo de demanda)
+        if (tarifaTipo === '3.0') suelos[n - 1] = 16;  // P6 (mayor por monotonía) debe superar 15 kW en 3.0TD
+        const lo = 1;
+        const hi = Math.max(16, ...periodos.map(p => Math.ceil(p.picoKw - 1e-9)));
         const m = hi - lo + 1;
         const coste = (i, v) => v < suelos[i] ? Infinity : costePeriodo(periodos[i], v, lam);
         let dp = new Array(m);
@@ -1016,18 +1007,13 @@
 
         let estado, titulo, texto, big, bigLabel;
         if (ahorro >= 1) {
-            estado = 'down'; titulo = 'Ahorro optimizando la potencia';
+            estado = 'down'; titulo = 'Se puede optimizar la potencia';
             big = fmt(ahorro, 0); bigLabel = '€/año';
-            texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año en término de potencia${st.excActual > 1 ? ' y excesos' : ''}. Con esta configuración pagarías ~${fmt(costeOpt, 0)} €/año${excOpt > 1 ? `, incluidos ~${fmt(excOpt, 0)} € de excesos que asumiría el cliente (${maxExcMeses} ${maxExcMeses === 1 ? 'mes' : 'meses'} al año)` : ', sin excesos'}.`;
-        } else if (st.excActual > excOpt + 1) {
-            // la óptima reduce los excesos de hoy: el cliente está infradimensionado (paga excesos)
-            estado = 'up'; titulo = 'Potencia infradimensionada';
-            big = fmt(st.excActual, 0); bigLabel = '€/año en excesos hoy';
-            texto = `Tu potencia contratada se queda corta: hoy pagas ~${fmt(st.excActual, 0)} €/año en excesos. La potencia recomendada los reduce a ~${fmt(excOpt, 0)} €/año; sube el término fijo pero te pone en regla y evita penalizaciones.`;
+            texto = `Hoy pagas ~${fmt(st.costeActual, 0)} €/año (término${st.excActual > 1 ? ' + excesos' : ''}). Con la potencia recomendada pagarías ~${fmt(costeOpt, 0)} €/año${excOpt > 1 ? `, incluidos ~${fmt(excOpt, 0)} € de excesos asumidos (${maxExcMeses} ${maxExcMeses === 1 ? 'mes' : 'meses'} al año)` : ', sin excesos'}.`;
         } else {
-            estado = 'ok'; titulo = 'Potencia bien ajustada';
+            estado = 'ok'; titulo = 'Potencia ya optimizada';
             big = '✓'; bigLabel = '';
-            texto = 'La potencia contratada ya está alineada con tu demanda real. No hay ahorro relevante optimizando.';
+            texto = `Tu potencia ya está en el mínimo coste posible (~${fmt(st.costeActual, 0)} €/año${st.excActual > 1 ? `, con ~${fmt(st.excActual, 0)} € de excesos que ya compensan` : ''}). Ninguna otra configuración legal sale más barata.`;
         }
         const icon = estado === 'up'
             ? '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'
