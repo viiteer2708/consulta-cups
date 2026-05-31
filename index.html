@@ -140,6 +140,92 @@
         /* Maximetros peak highlight */
         .maxi-peak { font-weight: 800; color: var(--danger); }
 
+        /* -- Optimizador de potencias -- */
+        #optimizadorSection { margin-top: 2rem; }
+        .opt-hero {
+            border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.25rem;
+            display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+            border: 1px solid var(--border); background: var(--surface);
+        }
+        .opt-hero.ok    { background: #ecfdf5; border-color: #a7f3d0; }
+        .opt-hero.down  { background: var(--elec-light); border-color: #bfdbfe; }
+        .opt-hero.up    { background: #fef2f2; border-color: #fecaca; }
+        .opt-hero__icon {
+            width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; color: #fff;
+        }
+        .opt-hero.ok   .opt-hero__icon { background: var(--accent); }
+        .opt-hero.down .opt-hero__icon { background: var(--primary); }
+        .opt-hero.up   .opt-hero__icon { background: var(--danger); }
+        .opt-hero__body { flex: 1; min-width: 200px; }
+        .opt-hero__title { font-size: 1.15rem; font-weight: 700; margin-bottom: .25rem; }
+        .opt-hero.ok   .opt-hero__title { color: #047857; }
+        .opt-hero.down .opt-hero__title { color: var(--primary-dark); }
+        .opt-hero.up   .opt-hero__title { color: #b91c1c; }
+        .opt-hero__text { font-size: .9rem; color: var(--text-muted); line-height: 1.45; }
+        .opt-hero__big { font-size: 2rem; font-weight: 800; line-height: 1; white-space: nowrap; }
+        .opt-hero.ok   .opt-hero__big { color: var(--accent); }
+        .opt-hero.down .opt-hero__big { color: var(--primary); }
+        .opt-hero.up   .opt-hero__big { color: var(--danger); }
+        .opt-hero__big small { font-size: .8rem; font-weight: 600; color: var(--text-muted); }
+
+        .opt-margin {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+        }
+        .opt-margin__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .65rem; gap: .5rem; flex-wrap: wrap; }
+        .opt-margin__label { font-size: .82rem; font-weight: 600; color: var(--text); }
+        .opt-margin__value { font-size: .95rem; font-weight: 800; color: var(--accent); }
+        .opt-margin input[type=range] {
+            width: 100%; -webkit-appearance: none; appearance: none; height: 6px;
+            border-radius: 3px; background: var(--border); outline: none; cursor: pointer;
+        }
+        .opt-margin input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+            background: var(--accent); cursor: pointer; box-shadow: var(--shadow); border: 2px solid #fff;
+        }
+        .opt-margin input[type=range]::-moz-range-thumb {
+            width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+            cursor: pointer; border: 2px solid #fff;
+        }
+        .opt-margin__hint { font-size: .75rem; color: var(--text-muted); margin-top: .5rem; }
+
+        .opt-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; margin-bottom: 1rem; }
+        .opt-table { width: 100%; border-collapse: collapse; font-size: .85rem; min-width: 560px; }
+        .opt-table th {
+            background: var(--bg); padding: .6rem .75rem; text-align: left; font-weight: 600;
+            font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap;
+        }
+        .opt-table td { padding: .6rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .opt-table tr:last-child td { border-bottom: none; }
+        .opt-table .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+        .opt-table .opt-recommended { color: var(--accent); font-weight: 800; }
+
+        .opt-badge {
+            display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .6rem;
+            border-radius: 20px; font-size: .72rem; font-weight: 700; white-space: nowrap;
+        }
+        .opt-badge.ok   { background: #ecfdf5; color: #047857; }
+        .opt-badge.down { background: var(--elec-light); color: var(--primary-dark); }
+        .opt-badge.up   { background: #fef2f2; color: #b91c1c; }
+        .opt-badge.none { background: var(--bg); color: var(--text-muted); }
+
+        .opt-bars { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+        .opt-bar-row { display: flex; align-items: center; gap: .4rem; font-size: .68rem; color: var(--text-muted); }
+        .opt-bar-track { flex: 1; height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+        .opt-bar { height: 100%; border-radius: 3px; transition: width .4s ease; }
+        .opt-bar.contratada { background: #94a3b8; }
+        .opt-bar.pico { background: var(--danger); }
+        .opt-bar.optima { background: var(--accent); }
+
+        .opt-note {
+            font-size: .76rem; color: var(--text-muted); line-height: 1.5;
+            background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: .85rem 1rem; margin-bottom: .5rem;
+        }
+        .opt-note strong { color: var(--text); }
+
         @media (max-width: 600px) {
             .search-row { flex-direction: column; }
             .btn { width: 100%; }
@@ -157,8 +243,9 @@
 
         @media print {
             .header, .search-card { break-inside: avoid; }
-            .btn, .toggle-group { display: none; }
+            .btn, .toggle-group, .opt-margin { display: none; }
             body { background: #fff; }
+            .opt-hero, .opt-table-wrap { break-inside: avoid; }
         }
     </style>
 </head>
@@ -230,6 +317,15 @@
             <div class="section-title">Maxímetros (últimos 12 meses)</div>
             <div id="maximetrosContent"></div>
         </div>
+        <div id="optimizadorSection">
+            <div class="section-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                Optimizador de potencias
+            </div>
+            <div id="optimizadorContent"></div>
+        </div>
     </div>
 </main>
 
@@ -252,6 +348,8 @@
     const lineaToggle = $('#lineaToggle');
 
     let selectedLinea = 'electricidad';
+    let optimizerState = null;
+    let margenSeguridad = 0.10; // colchón sobre el pico real; ajustable con el slider
 
     // Toggle buttons
     lineaToggle.addEventListener('click', (e) => {
@@ -506,6 +604,200 @@
         container.innerHTML = html;
     }
 
+    // -- Optimizador de potencias --
+    // Tipo de tarifa a partir del label ATR (2.0TD -> '2.0', 3.0TD -> '3.0', 6.1TD -> '6.X')
+    function getTarifaTipo(label) {
+        if (!label) return null;
+        if (label.charAt(0) === '2') return '2.0';
+        if (label.charAt(0) === '3') return '3.0';
+        if (label.charAt(0) === '6') return '6.X';
+        return null;
+    }
+
+    // Redondeo al alza al escalón de contratación según tarifa:
+    // 2.0TD -> 0,1 kW (telegestión) · 3.0TD -> 1 kW (BT >15 kW) · 6.X -> 0,1 kW (AT libre)
+    function redondearOptima(kw, tarifaTipo) {
+        const step = tarifaTipo === '3.0' ? 1 : 0.1;
+        const r = Math.ceil((kw - 1e-9) / step) * step;
+        return Math.round(r * 100) / 100;
+    }
+
+    function getPicosMaximos(maxData) {
+        let records = Array.isArray(maxData) ? maxData : (maxData ? [maxData] : []);
+        records = records.filter(r => r && r.cups);
+        const picos = {};
+        for (let i = 1; i <= 6; i++) {
+            let mx = 0;
+            records.forEach(r => { const v = r[`potenciaDemandadaEnWP${i}`] || 0; if (v > mx) mx = v; });
+            picos[i] = mx; // en W
+        }
+        return picos;
+    }
+
+    // Calcula potencia óptima por periodo con monotonía ascendente (P1<=P2<=...) y diagnóstico
+    function computeOptima(state, margen) {
+        let prev = 0;
+        return state.periodos.map(p => {
+            let opt = p.picoKw > 0 ? redondearOptima(p.picoKw * (1 + margen), state.tarifaTipo) : 0;
+            if (opt < prev) opt = prev;       // restricción legal P(n) <= P(n+1)
+            prev = opt;
+            const exceso = p.picoKw > p.contratadaKw + 0.001; // demanda real por encima de lo contratado
+            const dif = opt - p.contratadaKw;                 // acción para adoptar la óptima recomendada
+            let diag;
+            if (p.picoKw <= 0 && p.contratadaKw > 0) diag = 'none';
+            else if (dif > 0.05) diag = 'up';                 // subir (por exceso real o por monotonía/margen)
+            else if (dif < -0.1) diag = 'down';               // bajar: sobredimensionada
+            else diag = 'ok';
+            return Object.assign({}, p, { optimaKw: opt, diag, exceso });
+        });
+    }
+
+    function renderOptimizador(infoData, maxData) {
+        const section = $('#optimizadorSection');
+        const tarifaLabel = infoData ? getTarifa(infoData) : null;
+        const tarifaTipo = getTarifaTipo(tarifaLabel);
+        const picos = getPicosMaximos(maxData);
+
+        const periodos = [];
+        for (let i = 1; i <= 6; i++) {
+            const cKw = wToKw(infoData[`potenciasContratadasEnWP${i}`]) || 0;
+            const pKw = picos[i] > 0 ? picos[i] / 1000 : 0;
+            if (cKw > 0 || pKw > 0) periodos.push({ i, label: `P${i}`, contratadaKw: cKw, picoKw: pKw });
+        }
+        if (periodos.length === 0) { section.style.display = 'none'; return; }
+
+        let regimen;
+        if (tarifaTipo === '2.0') regimen = 'icp';
+        else if (tarifaTipo === '3.0' || tarifaTipo === '6.X') regimen = 'maximetro';
+        else regimen = periodos.length <= 2 ? 'icp' : 'maximetro';
+
+        optimizerState = {
+            periodos, regimen, tarifaLabel,
+            tarifaTipo: tarifaTipo || (regimen === 'icp' ? '2.0' : '3.0')
+        };
+        section.style.display = '';
+
+        // Chasis: el slider se crea una sola vez; el hero y la tabla se refrescan al moverlo
+        const pct = Math.round(margenSeguridad * 100);
+        $('#optimizadorContent').innerHTML = `
+            <div id="optHero"></div>
+            <div class="opt-margin">
+                <div class="opt-margin__head">
+                    <span class="opt-margin__label">Margen de seguridad sobre el pico real</span>
+                    <span class="opt-margin__value" id="optMarginValue">+${pct}%</span>
+                </div>
+                <input type="range" id="optMarginSlider" min="0" max="25" step="1" value="${pct}">
+                <div class="opt-margin__hint">A 0% recomienda justo el pico máximo (máximo ahorro, cero colchón). Súbelo para dejar margen y evitar cortes o excesos.</div>
+            </div>
+            <div class="opt-table-wrap">
+                <table class="opt-table">
+                    <thead><tr>
+                        <th>Periodo</th><th>Contratada</th><th>Pico máx 12m</th>
+                        <th>Óptima</th><th style="width:140px">Comparativa</th><th>Acción</th>
+                    </tr></thead>
+                    <tbody id="optTableBody"></tbody>
+                </table>
+            </div>
+            <div class="opt-note" id="optNote"></div>`;
+
+        const slider = $('#optMarginSlider');
+        slider.addEventListener('input', () => {
+            margenSeguridad = parseInt(slider.value, 10) / 100;
+            $('#optMarginValue').textContent = `+${slider.value}%`;
+            updateOptimizador();
+        });
+        updateOptimizador();
+    }
+
+    function updateOptimizador() {
+        const state = optimizerState;
+        if (!state) return;
+        const heroEl = $('#optHero'), bodyEl = $('#optTableBody'), noteEl = $('#optNote');
+
+        if (state.periodos.every(p => p.picoKw <= 0)) {
+            heroEl.innerHTML = '';
+            bodyEl.innerHTML = `<tr><td colspan="6" style="color:var(--text-muted);padding:1.25rem;text-align:center">
+                Este suministro no tiene datos de maxímetro suficientes para calcular la potencia óptima.</td></tr>`;
+            noteEl.innerHTML = 'El optimizador necesita el histórico de potencia demandada por periodo (maxímetros).';
+            return;
+        }
+
+        const filas = computeOptima(state, margenSeguridad);
+        // Sin euros no se pueden sumar kW de periodos con precios distintos: el titular usa la
+        // reducción/subida MÁXIMA entre periodos (un número real y defendible). El detalle, en la tabla.
+        const activas = filas.filter(f => f.diag !== 'none');
+        const redMax = Math.max(0, ...activas.map(f => f.contratadaKw - f.optimaKw));
+        const subMax = Math.max(0, ...activas.map(f => f.optimaKw - f.contratadaKw));
+        const nDown = filas.filter(f => f.diag === 'down').length;
+        const totalPer = filas.length;
+        const nExceso = filas.filter(f => f.exceso).length; // excesos reales: pico > contratada
+
+        let estado, titulo, texto, big, bigLabel;
+        if (nExceso > 0) {
+            estado = 'up';
+            titulo = 'Atención: la potencia se queda corta';
+            big = fmt(subMax, 1); bigLabel = 'kW a subir';
+            texto = (state.regimen === 'maximetro'
+                ? `El maxímetro superó la potencia contratada en ${nExceso} de ${totalPer} periodos: se están facturando excesos. Conviene SUBIR la potencia a la recomendada — nunca bajar mientras haya excesos.`
+                : `La demanda registrada superó la potencia contratada en ${nExceso} de ${totalPer} periodos: el ICP estaría cortando el suministro. Conviene subir la potencia a la recomendada.`);
+        } else if (redMax >= 0.1) {
+            estado = 'down';
+            titulo = 'Potencia sobredimensionada';
+            big = fmt(redMax, 1); bigLabel = 'kW menos (máx.)';
+            texto = `Este suministro paga potencia que no usa: se puede bajar en ${nDown} de ${totalPer} periodos manteniendo el margen de seguridad elegido. La tabla muestra la potencia óptima de cada periodo; cada kW recortado es ahorro directo en el término de potencia.`;
+        } else if (subMax >= 0.1) {
+            estado = 'up';
+            titulo = 'Potencia muy ajustada';
+            big = fmt(subMax, 1); bigLabel = 'kW a subir';
+            texto = `La potencia contratada está al límite del pico real. Con el margen de seguridad elegido conviene subirla ligeramente para evitar ${state.regimen === 'maximetro' ? 'excesos' : 'cortes'}.`;
+        } else {
+            estado = 'ok';
+            titulo = 'Potencia bien ajustada';
+            big = '✓'; bigLabel = '';
+            texto = 'La potencia contratada está alineada con la demanda real para el margen de seguridad actual. No hay margen de bajada relevante.';
+        }
+
+        const icon = estado === 'up'
+            ? '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'
+            : (estado === 'down' ? '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>' : '<path d="M20 6 9 17l-5-5"/>');
+        heroEl.innerHTML = `
+            <div class="opt-hero ${estado}">
+                <div class="opt-hero__icon">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>
+                </div>
+                <div class="opt-hero__body">
+                    <div class="opt-hero__title">${escapeHtml(titulo)}</div>
+                    <div class="opt-hero__text">${escapeHtml(texto)}</div>
+                </div>
+                ${bigLabel ? `<div style="text-align:center"><div class="opt-hero__big">${big}<small> ${bigLabel}</small></div></div>` : `<div class="opt-hero__big">${big}</div>`}
+            </div>`;
+
+        const maxScale = Math.max(...filas.map(f => Math.max(f.contratadaKw, f.picoKw, f.optimaKw)), 0.001);
+        const bar = (cls, kw) => `<div class="opt-bar-row"><div class="opt-bar-track"><div class="opt-bar ${cls}" style="width:${Math.min(100, kw / maxScale * 100)}%"></div></div></div>`;
+        bodyEl.innerHTML = filas.map(f => {
+            let badge;
+            if (f.diag === 'down') badge = `<span class="opt-badge down">↓ Bajar ${fmt(f.contratadaKw - f.optimaKw, 1)} kW</span>`;
+            else if (f.diag === 'up') badge = `<span class="opt-badge up">↑ Subir ${fmt(f.optimaKw - f.contratadaKw, 1)} kW</span>`;
+            else if (f.diag === 'none') badge = '<span class="opt-badge none">sin demanda</span>';
+            else badge = '<span class="opt-badge ok">✓ Óptima</span>';
+            return `<tr>
+                <td><strong>${f.label}</strong></td>
+                <td class="num">${fmt(f.contratadaKw)} <small style="color:var(--text-muted)">kW</small></td>
+                <td class="num">${f.picoKw > 0 ? fmt(f.picoKw) : '—'}</td>
+                <td class="num opt-recommended">${f.picoKw > 0 ? fmt(f.optimaKw) : '—'}</td>
+                <td><div class="opt-bars">${bar('contratada', f.contratadaKw)}${bar('pico', f.picoKw)}${bar('optima', f.optimaKw)}</div></td>
+                <td>${badge}</td>
+            </tr>`;
+        }).join('');
+
+        const ctrl = state.regimen === 'maximetro'
+            ? 'En <strong>' + escapeHtml(state.tarifaLabel || '3.0TD/6.X') + '</strong> los excesos de potencia se penalizan aparte, por eso si el maxímetro supera la contratada conviene subir, nunca bajar.'
+            : 'En <strong>2.0TD</strong> el control es por ICP: superar la potencia solo provoca cortes, sin penalización económica.';
+        noteEl.innerHTML = 'Barras: <strong style="color:#94a3b8">contratada</strong> · <strong style="color:var(--danger)">pico máx</strong> · <strong style="color:var(--accent)">óptima</strong>. '
+            + 'Cálculo sobre el maxímetro de los últimos 12 meses; la óptima cubre el pico real + el margen elegido y respeta la regla legal de potencias ascendentes (P1≤P2≤…≤P6). '
+            + ctrl + ' En el sistema TD el término de potencia se factura siempre por la contratada (sin banda 85-105%). El cambio de potencia es gratis una vez cada 12 meses.';
+    }
+
     // -- Main search --
     async function search() {
         const cups = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
@@ -542,6 +834,9 @@
 
             if (maxData && linea === 'electricidad') { renderMaximetros(maxData); }
             else { $('#maximetrosSection').style.display = 'none'; }
+
+            if (linea === 'electricidad' && infoData) { renderOptimizador(infoData, maxData); }
+            else { $('#optimizadorSection').style.display = 'none'; }
 
             resultsEl.classList.add('show');
         } catch (err) {
