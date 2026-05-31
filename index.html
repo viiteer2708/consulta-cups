@@ -901,9 +901,10 @@
         return periodos;
     }
 
+    const TOL_EXC = 0.05; // kW: ignora "excesos" < 50 W (ruido de redondeo del maxímetro, no son excesos reales)
     // Excesos OBSERVADOS en este periodo si contratas Pc (fórmula tipo 4-5: tep·exceso·días, en €)
     function penalPeriodo(meses, Pc, tep) {
-        return meses.reduce((s, m) => s + (m.maxKw > Pc ? tep * (m.maxKw - Pc) * m.dias : 0), 0);
+        return meses.reduce((s, m) => s + (m.maxKw > Pc + TOL_EXC ? tep * (m.maxKw - Pc) * m.dias : 0), 0);
     }
     // Excesos ANUALIZADOS a 1 año completo (corrige el sesgo cuando hay <12 meses de maxímetro)
     function penalAnual(p, Pc) { return penalPeriodo(p.meses, Pc, p.tep) * p.factorAnual; }
@@ -952,7 +953,7 @@
         return periodos.map((p, i) => {
             const o = opt[i];
             const term = o * p.precio, pen = penalAnual(p, o);
-            const nExc = p.meses.filter(mm => mm.maxKw > o).length;
+            const nExc = p.meses.filter(mm => mm.maxKw > o + TOL_EXC).length;
             return Object.assign({}, p, { optimaKw: o, term, pen, total: term + pen, nExc });
         });
     }
