@@ -1460,6 +1460,59 @@
         return fila;
     }
 
+    // -- Task 5: columnas y tabla del inventario --
+    function numES(n, dec) {
+        if (n == null || isNaN(n)) return '';
+        const r = Math.round(n * Math.pow(10, dec)) / Math.pow(10, dec);
+        return r.toString().replace('.', ',');
+    }
+
+    const COLS_ELEC = [
+        { label: 'Tarifa', get: f => f.tarifa },
+        { label: 'Distribuidora', get: f => f.distribuidora },
+        { label: 'Tensión (V)', get: f => f.tension },
+        { label: 'CNAE', get: f => f.cnae },
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `P. contratada P${i} (kW)`, get: f => numES(f.pc[i], 2) })),
+        { label: 'P. máx BIE (kW)', get: f => numES(f.bie, 2) },
+        { label: 'Consumo anual (kWh)', get: f => numES(f.consumoTotal, 0) },
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Consumo anual P${i} (kWh)`, get: f => numES(f.ca[i], 0) })),
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Pico máx P${i} (kW)`, get: f => numES(f.pico[i], 2) })),
+        { label: 'Última lectura', get: f => f.ultimaLectura }
+    ];
+    const COLS_GAS = [
+        { label: 'Tarifa/Peaje', get: f => f.tarifa },
+        { label: 'Distribuidora', get: f => f.distribuidora },
+        { label: 'Caudal máx diario', get: f => String(f.caudalDiario ?? '') },
+        { label: 'Caudal horario', get: f => String(f.caudalHorario ?? '') },
+        { label: 'Presión', get: f => String(f.presion ?? '') },
+        { label: 'CP', get: f => f.cp },
+        { label: 'CNAE', get: f => f.cnae },
+        { label: 'Consumo anual (kWh)', get: f => numES(f.consumoTotal, 0) },
+        { label: 'Última lectura', get: f => f.ultimaLectura }
+    ];
+    const ESTADO_LABEL = { ok: 'OK', parcial: 'Parcial', sin: 'Sin datos', invalido: 'Formato inválido', error: 'Error API' };
+
+    function colsDe(tipo) { return tipo === 'gas' ? COLS_GAS : COLS_ELEC; }
+
+    function renderLoteTabla(filas, cabeceras, tipo) {
+        const cols = colsDe(tipo);
+        const head = ['CUPS', ...cabeceras, ...cols.map(c => c.label), 'Estado'];
+        let html = '<div class="lote-table-wrap"><table class="lote-table"><thead><tr>'
+            + head.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+        filas.forEach(f => {
+            const datos = (f.estado === 'invalido' || f.estado === 'sin')
+                ? cols.map(() => '')
+                : cols.map(c => escapeHtml(c.get(f)));
+            const extras = cabeceras.map(cab => escapeHtml((f.extra && f.extra[cab]) || ''));
+            html += '<tr><td>' + escapeHtml(f.cups) + '</td>'
+                + extras.map(v => `<td>${v}</td>`).join('')
+                + datos.map(v => `<td>${v}</td>`).join('')
+                + `<td><span class="lote-estado ${f.estado}">${ESTADO_LABEL[f.estado] || f.estado}</span></td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
     async function procesarUno(item, tipo) {
         if (item.estado === 'invalido') return Object.assign({}, item, { estado: 'invalido' });
         const endpoints = tipo === 'electricidad'
@@ -1513,7 +1566,8 @@
         const cuenta = (s) => hechas.filter(f => f.estado === s).length;
         $('#loteProgText').innerHTML = `${loteCancelado ? '⏹️ Cancelado. ' : '✅ Hecho. '}`
             + `${cuenta('ok')} OK · ${cuenta('parcial')} parciales · ${cuenta('sin')} sin datos · ${cuenta('invalido')} inválidos.`;
-        // El render de la tabla y el botón Exportar se añaden en las Tasks 5-6.
+        $('#loteResultados').innerHTML = renderLoteTabla(hechas, cabeceras, tipo);
+        // El botón Exportar se añade en la Task 6.
         window.__loteFilas = hechas; window.__loteCabeceras = cabeceras; window.__loteTipo = tipo; // temporal para depurar
     }
 
