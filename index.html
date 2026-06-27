@@ -1410,6 +1410,56 @@
         return results;
     }
 
+    const TENSION_MAP = { 1: '1x230', 2: '1x230', 3: '3x380', 4: '3x380', 5: '3x380/220', 6: '3x380/220' };
+
+    function consumoTotalKwh(consumo) {
+        if (!consumo) return null;
+        const isMwh = (consumo.unidad || '').toLowerCase().includes('mwh');
+        const raw = consumo.consumoAnual ?? consumo.energiaActivaAnualTotal;
+        if (raw == null) return null;
+        return isMwh ? mwhToKwh(raw) : parseFloat(raw);
+    }
+    function consumoPeriodoKwh(consumo, i) {
+        if (!consumo) return null;
+        const isMwh = (consumo.unidad || '').toLowerCase().includes('mwh');
+        const raw = consumo[`consumoAnualP${i}`] ?? consumo[`energiaActivaAnualP${i}`];
+        if (raw == null) return null;
+        return isMwh ? mwhToKwh(raw) : parseFloat(raw);
+    }
+
+    function extraerFilaElec(info, consumo, max, item) {
+        const picos = getPicosMaximos(max); // {1..6} en W
+        const fila = Object.assign({}, item);
+        fila.tarifa = info ? (getTarifa(info) || '') : '';
+        fila.distribuidora = info ? (info.nombreEmpresaDistribuidora || '') : '';
+        fila.tension = info && info.codigoTensionV ? (TENSION_MAP[info.codigoTensionV] || `Cod. ${info.codigoTensionV}`) : '';
+        fila.cnae = info && info.CNAE != null ? String(info.CNAE) : '';
+        fila.bie = info ? wToKw(info.potenciaMaximaBIEW) : null;
+        fila.pc = {}; fila.ca = {}; fila.pico = {};
+        for (let i = 1; i <= 6; i++) {
+            fila.pc[i] = info ? wToKw(info[`potenciasContratadasEnWP${i}`]) : null;
+            fila.ca[i] = consumoPeriodoKwh(consumo, i);
+            fila.pico[i] = picos[i] > 0 ? picos[i] / 1000 : null;
+        }
+        fila.consumoTotal = consumoTotalKwh(consumo);
+        fila.ultimaLectura = info && info.fechaUltimaLectura ? fmtDate(info.fechaUltimaLectura) : '';
+        return fila;
+    }
+
+    function extraerFilaGas(info, consumo, item) {
+        const fila = Object.assign({}, item);
+        fila.tarifa = info ? (info.codigoPeajeEnVigor || info.codigoTarifaATREnVigor || '') : '';
+        fila.distribuidora = info ? (info.nombreEmpresaDistribuidora || '') : '';
+        fila.caudalDiario = info && info.caudalMaximoDiarioEnWhDia != null ? info.caudalMaximoDiarioEnWhDia : '';
+        fila.caudalHorario = info && info.caudalHorarioEnWh != null ? info.caudalHorarioEnWh : '';
+        fila.presion = info && info.presionMedida != null ? info.presionMedida : '';
+        fila.cp = info && info.codigoPostalPS != null ? String(info.codigoPostalPS) : '';
+        fila.cnae = info && info.CNAE != null ? String(info.CNAE) : '';
+        fila.consumoTotal = consumoTotalKwh(consumo);
+        fila.ultimaLectura = info && info.fechaUltimaLectura ? fmtDate(info.fechaUltimaLectura) : '';
+        return fila;
+    }
+
     async function procesarUno(item, tipo) {
         if (item.estado === 'invalido') return Object.assign({}, item, { estado: 'invalido' });
         const endpoints = tipo === 'electricidad'
@@ -1423,8 +1473,12 @@
         const huboError = settled.some(s => s.status === 'rejected');
         const sinDatos = vals.every(v => v == null);
         let estado = sinDatos ? 'sin' : (huboError ? 'parcial' : 'ok');
-        // Las columnas de datos se rellenan en la Task 4 (extraerFilaElec/Gas).
-        return Object.assign({}, item, { estado, _raw: vals });
+        if (estado === 'sin') return Object.assign({}, item, { estado: 'sin' });
+        const fila = tipo === 'electricidad'
+            ? extraerFilaElec(vals[0], vals[1], vals[2], item)
+            : extraerFilaGas(vals[0], vals[1], item);
+        fila.estado = estado; // 'ok' o 'parcial'
+        return fila;
     }
 
     async function procesarLote() {
