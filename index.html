@@ -1383,6 +1383,86 @@
         return { cabeceras: cabFinal, items };
     }
 
+    let loteCancelado = false;
+
+    // apiGet lanza en error HTTP/red y devuelve null en "sin datos". Reintenta 1× solo ante error.
+    async function getConRetry(endpoint, params) {
+        for (let intento = 0; intento < 2; intento++) {
+            try { return await apiGet(endpoint, params); }
+            catch (e) { if (intento === 1) throw e; }
+        }
+    }
+
+    async function runPool(items, worker, concurrency, onProgress, isCancelled) {
+        const results = new Array(items.length);
+        let idx = 0, done = 0;
+        async function next() {
+            while (idx < items.length) {
+                if (isCancelled()) return;
+                const i = idx++;
+                results[i] = await worker(items[i], i);
+                done++;
+                onProgress(done, items.length);
+            }
+        }
+        const n = Math.min(concurrency, items.length);
+        await Promise.all(Array.from({ length: n }, next));
+        return results;
+    }
+
+    async function procesarUno(item, tipo) {
+        if (item.estado === 'invalido') return Object.assign({}, item, { estado: 'invalido' });
+        const endpoints = tipo === 'electricidad'
+            ? [['sips/info', { cups: item.cups }],
+               ['sips/consumo/anual', { linea: 'electricidad', cups: item.cups }],
+               ['sips/consumo', { linea: 'electricidad', cups: item.cups }]]
+            : [['sips/info', { cups: item.cups }],
+               ['sips/consumo/anual', { linea: 'gas', cups: item.cups }]];
+        const settled = await Promise.allSettled(endpoints.map(([e, p]) => getConRetry(e, p)));
+        const vals = settled.map(s => s.status === 'fulfilled' ? s.value : null);
+        const huboError = settled.some(s => s.status === 'rejected');
+        const sinDatos = vals.every(v => v == null);
+        let estado = sinDatos ? 'sin' : (huboError ? 'parcial' : 'ok');
+        // Las columnas de datos se rellenan en la Task 4 (extraerFilaElec/Gas).
+        return Object.assign({}, item, { estado, _raw: vals });
+    }
+
+    async function procesarLote() {
+        const { cabeceras, items } = parseLoteInput($('#loteInput').value);
+        if (!items.length) { $('#loteOutput').innerHTML = '<div class="lote-progress">No se han detectado CUPS.</div>'; return; }
+        const tipo = loteLinea;
+        const aviso = items.length > 200
+            ? `<div class="opt-note" style="margin-bottom:1rem">⚠️ ${items.length} CUPS: el lote hará muchas llamadas y puede tardar varios minutos.</div>` : '';
+
+        loteCancelado = false;
+        $('#loteProcesarBtn').disabled = true;
+        $('#loteCancelarBtn').style.display = '';
+        $('#loteOutput').style.display = '';
+        $('#loteOutput').innerHTML = aviso + `
+            <div class="lote-progress">
+                <div id="loteProgText">Procesando 0 / ${items.length}…</div>
+                <div class="lote-progress__bar-track"><div class="lote-progress__bar" id="loteProgBar"></div></div>
+            </div>
+            <div id="loteResultados"></div>`;
+
+        const onProgress = (done, total) => {
+            $('#loteProgBar').style.width = (done / total * 100) + '%';
+            $('#loteProgText').textContent = `Procesando ${done} / ${total}…`;
+        };
+
+        const filas = await runPool(items, (it) => procesarUno(it, tipo), 4, onProgress, () => loteCancelado);
+
+        $('#loteProcesarBtn').disabled = false;
+        $('#loteCancelarBtn').style.display = 'none';
+
+        const hechas = filas.filter(Boolean);
+        const cuenta = (s) => hechas.filter(f => f.estado === s).length;
+        $('#loteProgText').innerHTML = `${loteCancelado ? '⏹️ Cancelado. ' : '✅ Hecho. '}`
+            + `${cuenta('ok')} OK · ${cuenta('parcial')} parciales · ${cuenta('sin')} sin datos · ${cuenta('invalido')} inválidos.`;
+        // El render de la tabla y el botón Exportar se añaden en las Tasks 5-6.
+        window.__loteFilas = hechas; window.__loteCabeceras = cabeceras; window.__loteTipo = tipo; // temporal para depurar
+    }
+
     // -- Events --
     cupsInput.addEventListener('input', () => {
         const val = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
@@ -1400,13 +1480,8 @@
         reader.readAsText(f, 'UTF-8');
     });
 
-    $('#loteProcesarBtn').addEventListener('click', () => {
-        const { cabeceras, items } = parseLoteInput($('#loteInput').value);
-        const validos = items.filter(it => it.estado === 'pendiente').length;
-        const invalidos = items.length - validos;
-        $('#loteOutput').innerHTML = `<div class="lote-progress">Detectados <strong>${items.length}</strong> CUPS únicos: `
-            + `${validos} válidos, ${invalidos} con formato inválido. Cabeceras extra: ${cabeceras.length ? cabeceras.join(', ') : '—'}.</div>`;
-    });
+    $('#loteProcesarBtn').addEventListener('click', procesarLote);
+    $('#loteCancelarBtn').addEventListener('click', () => { loteCancelado = true; });
 
     fetch('/api/proxy?endpoint=sips/info&cups=test')
         .then(() => { statusDot.classList.add('ok'); statusTextEl.textContent = 'Conectado'; })
