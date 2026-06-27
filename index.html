@@ -1494,6 +1494,32 @@
 
     function colsDe(tipo) { return tipo === 'gas' ? COLS_GAS : COLS_ELEC; }
 
+    // -- Task 6: export CSV --
+    function csvCell(v) {
+        const s = v == null ? '' : String(v);
+        return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function exportarCSV(filas, cabeceras, tipo) {
+        const cols = colsDe(tipo);
+        const head = ['CUPS', ...cabeceras, ...cols.map(c => c.label), 'Estado'];
+        const lineas = [head.map(csvCell).join(';')];
+        filas.forEach(f => {
+            const datos = (f.estado === 'invalido' || f.estado === 'sin') ? cols.map(() => '') : cols.map(c => c.get(f));
+            const extras = cabeceras.map(cab => (f.extra && f.extra[cab]) || '');
+            const fila = [f.cups, ...extras, ...datos, ESTADO_LABEL[f.estado] || f.estado];
+            lineas.push(fila.map(csvCell).join(';'));
+        });
+        const contenido = '﻿' + lineas.join('\r\n');
+        const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `inventario-${tipo === 'gas' ? 'gas' : 'luz'}-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+    }
+
     function renderLoteTabla(filas, cabeceras, tipo) {
         const cols = colsDe(tipo);
         const head = ['CUPS', ...cabeceras, ...cols.map(c => c.label), 'Estado'];
@@ -1567,8 +1593,14 @@
         $('#loteProgText').innerHTML = `${loteCancelado ? '⏹️ Cancelado. ' : '✅ Hecho. '}`
             + `${cuenta('ok')} OK · ${cuenta('parcial')} parciales · ${cuenta('sin')} sin datos · ${cuenta('invalido')} inválidos.`;
         $('#loteResultados').innerHTML = renderLoteTabla(hechas, cabeceras, tipo);
-        // El botón Exportar se añade en la Task 6.
-        window.__loteFilas = hechas; window.__loteCabeceras = cabeceras; window.__loteTipo = tipo; // temporal para depurar
+        if (hechas.length) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-primary';
+            btn.textContent = 'Exportar CSV';
+            btn.style.marginBottom = '1rem';
+            btn.addEventListener('click', () => exportarCSV(hechas, cabeceras, tipo));
+            $('#loteResultados').insertBefore(btn, $('#loteResultados').firstChild);
+        }
     }
 
     // -- Events --
