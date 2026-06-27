@@ -60,6 +60,12 @@ consulta-cups/
 
 **Producción:** **https://consulta-cups.vercel.app** (proyecto Vercel `consulta-cups`; despliega solo al hacer push a `master`). Para auditar un CUPS sin la web: `curl -sG https://consulta-cups.vercel.app/api/proxy --data-urlencode 'endpoint=sips/consumo' --data-urlencode 'cups=ES...'`.
 
+## Modo Lote (consulta masiva, dentro de `index.html`)
+Toggle `Individual | Lote`. Procesa muchos CUPS (pegados/Excel o CSV subido) en el cliente
+contra el proxy actual (pool de 4, reintento 1×, cancelable), extrae datos crudos de SICOM
+(luz o gas, elegido por lote) y exporta un inventario a CSV (`;`+BOM, cabecera en español).
+No usa el optimizador. `api/proxy.js` no se toca.
+
 ## Flujo de trabajo
 1. Editar `index.html` directamente para cambios de UI/lógica
 2. Editar `api/proxy.js` para cambios en el proxy/API
