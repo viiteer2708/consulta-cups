@@ -252,6 +252,30 @@
         .econ-bd__value.neg { color: var(--danger); }
         .econ-bd__sub { font-size: .72rem; color: var(--text-muted); margin-top: .2rem; }
 
+        /* -- Modo Lote -- */
+        .mode-toggle { max-width: 360px; margin: 0 auto 1.5rem; }
+        .lote-input {
+            width: 100%; border: 2px solid var(--border); border-radius: var(--radius);
+            padding: .85rem 1rem; font-size: .9rem; font-family: 'SF Mono','Cascadia Code','Consolas',monospace;
+            resize: vertical; outline: none; transition: border-color .2s, box-shadow .2s;
+        }
+        .lote-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+        .lote-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1rem; flex-wrap: wrap; }
+        .btn-ghost { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+        .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+        .lote-progress { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin: 1.5rem 0; }
+        .lote-progress__bar-track { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; margin-top: .6rem; }
+        .lote-progress__bar { height: 100%; background: var(--primary); width: 0; transition: width .3s ease; }
+        .lote-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; margin-bottom: 1rem; }
+        .lote-table { width: 100%; border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
+        .lote-table th { background: var(--bg); padding: .55rem .7rem; text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+        .lote-table td { padding: .5rem .7rem; border-bottom: 1px solid var(--border); }
+        .lote-estado { font-weight: 700; font-size: .72rem; }
+        .lote-estado.ok { color: var(--accent); }
+        .lote-estado.parcial { color: var(--gas); }
+        .lote-estado.sin { color: var(--text-muted); }
+        .lote-estado.error, .lote-estado.invalido { color: var(--danger); }
+
         @media (max-width: 600px) {
             .search-row { flex-direction: column; }
             .btn { width: 100%; }
@@ -294,26 +318,46 @@
     <div class="search-card">
         <h1>Consulta de CUPS</h1>
         <p>Introduce el código CUPS para obtener potencias, consumos y maxímetros</p>
-        <div class="search-row">
-            <div class="input-wrap">
-                <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                </svg>
-                <input type="text" id="cupsInput" placeholder="ES0021000009693104NG" autocomplete="off" spellcheck="false" maxlength="25"/>
+        <div class="toggle-group mode-toggle" id="modoToggle">
+            <button class="toggle-btn active" data-modo="individual">Individual</button>
+            <button class="toggle-btn" data-modo="lote">Lote (varios CUPS)</button>
+        </div>
+        <div id="modoIndividual">
+            <div class="search-row">
+                <div class="input-wrap">
+                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <input type="text" id="cupsInput" placeholder="ES0021000009693104NG" autocomplete="off" spellcheck="false" maxlength="25"/>
+                </div>
+                <div class="toggle-group" id="lineaToggle">
+                    <button class="toggle-btn active" data-value="electricidad">Electricidad</button>
+                    <button class="toggle-btn" data-value="gas">Gas</button>
+                </div>
+                <button class="btn btn-primary" id="searchBtn" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    Consultar
+                </button>
             </div>
-            <div class="toggle-group" id="lineaToggle">
+            <div class="type-badge" id="typeBadge">
+                <span id="typeBadgeText"></span>
+            </div>
+        </div>
+        <div id="modoLote" style="display:none">
+            <div class="toggle-group lote-tipo" id="loteTipoToggle" style="max-width:320px;margin-bottom:1rem">
                 <button class="toggle-btn active" data-value="electricidad">Electricidad</button>
                 <button class="toggle-btn" data-value="gas">Gas</button>
             </div>
-            <button class="btn btn-primary" id="searchBtn" disabled>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                </svg>
-                Consultar
-            </button>
-        </div>
-        <div class="type-badge" id="typeBadge">
-            <span id="typeBadgeText"></span>
+            <textarea id="loteInput" class="lote-input" rows="6"
+                placeholder="Pega aquí los CUPS (uno por línea) o pega varias columnas desde Excel (CUPS en la primera columna)."></textarea>
+            <div class="lote-actions">
+                <label class="btn btn-ghost" for="loteFile">Subir CSV/TXT</label>
+                <input type="file" id="loteFile" accept=".csv,.txt" hidden>
+                <button class="btn btn-primary" id="loteProcesarBtn">Procesar lote</button>
+                <button class="btn btn-ghost" id="loteCancelarBtn" style="display:none">Cancelar</button>
+            </div>
         </div>
     </div>
 
@@ -353,6 +397,7 @@
             <div id="optimizadorContent"></div>
         </div>
     </div>
+    <div id="loteOutput" style="display:none"></div>
 </main>
 
 <script>
@@ -379,6 +424,33 @@
     let econState = null;
     let riesgoNivel = 50; // 0 = seguro (cubre pico) · 50 = óptimo económico · 100 = agresivo
     let margenSeguridad = 0.10; // colchón sobre el pico real; ajustable con el slider
+
+    let modo = 'individual';
+    let loteLinea = 'electricidad';
+    const modoToggle = $('#modoToggle');
+    const loteTipoToggle = $('#loteTipoToggle');
+
+    function setModo(nuevo) {
+        modo = nuevo;
+        modoToggle.querySelectorAll('.toggle-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.modo === nuevo));
+        $('#modoIndividual').style.display = nuevo === 'individual' ? '' : 'none';
+        $('#modoLote').style.display = nuevo === 'lote' ? '' : 'none';
+        $('#results').classList.remove('show');
+        hideError();
+        $('#loteOutput').style.display = nuevo === 'lote' ? '' : 'none';
+    }
+    modoToggle.addEventListener('click', (e) => {
+        const b = e.target.closest('.toggle-btn'); if (!b) return;
+        setModo(b.dataset.modo);
+    });
+    loteTipoToggle.addEventListener('click', (e) => {
+        const b = e.target.closest('.toggle-btn'); if (!b) return;
+        loteTipoToggle.querySelectorAll('.toggle-btn').forEach(x => x.classList.remove('active', 'gas-active'));
+        b.classList.add('active');
+        loteLinea = b.dataset.value;
+        if (loteLinea === 'gas') b.classList.add('gas-active');
+    });
 
     // Toggle buttons
     lineaToggle.addEventListener('click', (e) => {
