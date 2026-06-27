@@ -1351,8 +1351,10 @@
         const lineas = (texto || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         if (!lineas.length) return { cabeceras: [], items: [] };
 
-        const splitCols = (l) => l.includes('\t') ? l.split('\t')
-            : (l.includes(';') ? l.split(';') : (l.includes(',') ? l.split(',') : [l]));
+        // Detecta el separador UNA vez (1ª línea no vacía) y aplícalo a todo el archivo.
+        const detectarSep = (l) => l.includes('\t') ? '\t' : (l.includes(';') ? ';' : (l.includes(',') ? ',' : null));
+        const sep = detectarSep(lineas[0]);
+        const splitCols = (l) => sep ? l.split(sep) : [l];
 
         let cabeceras = [];
         let start = 0;
