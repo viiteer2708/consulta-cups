@@ -1472,11 +1472,11 @@
         { label: 'Distribuidora', get: f => f.distribuidora },
         { label: 'Tensión (V)', get: f => f.tension },
         { label: 'CNAE', get: f => f.cnae },
-        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `P. contratada P${i} (kW)`, get: f => numES(f.pc[i], 2) })),
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `P. contratada P${i} (kW)`, get: f => numES(f.pc?.[i], 2) })),
         { label: 'P. máx BIE (kW)', get: f => numES(f.bie, 2) },
         { label: 'Consumo anual (kWh)', get: f => numES(f.consumoTotal, 0) },
-        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Consumo anual P${i} (kWh)`, get: f => numES(f.ca[i], 0) })),
-        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Pico máx P${i} (kW)`, get: f => numES(f.pico[i], 2) })),
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Consumo anual P${i} (kWh)`, get: f => numES(f.ca?.[i], 0) })),
+        ...Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `Pico máx P${i} (kW)`, get: f => numES(f.pico?.[i], 2) })),
         { label: 'Última lectura', get: f => f.ultimaLectura }
     ];
     const COLS_GAS = [
@@ -1505,7 +1505,7 @@
         const head = ['CUPS', ...cabeceras, ...cols.map(c => c.label), 'Estado'];
         const lineas = [head.map(csvCell).join(';')];
         filas.forEach(f => {
-            const datos = (f.estado === 'invalido' || f.estado === 'sin') ? cols.map(() => '') : cols.map(c => c.get(f));
+            const datos = (f.estado === 'invalido' || f.estado === 'sin' || f.estado === 'error') ? cols.map(() => '') : cols.map(c => c.get(f));
             const extras = cabeceras.map(cab => (f.extra && f.extra[cab]) || '');
             const fila = [f.cups, ...extras, ...datos, ESTADO_LABEL[f.estado] || f.estado];
             lineas.push(fila.map(csvCell).join(';'));
@@ -1526,14 +1526,14 @@
         let html = '<div class="lote-table-wrap"><table class="lote-table"><thead><tr>'
             + head.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
         filas.forEach(f => {
-            const datos = (f.estado === 'invalido' || f.estado === 'sin')
+            const datos = (f.estado === 'invalido' || f.estado === 'sin' || f.estado === 'error')
                 ? cols.map(() => '')
                 : cols.map(c => escapeHtml(c.get(f)));
             const extras = cabeceras.map(cab => escapeHtml((f.extra && f.extra[cab]) || ''));
             html += '<tr><td>' + escapeHtml(f.cups) + '</td>'
                 + extras.map(v => `<td>${v}</td>`).join('')
                 + datos.map(v => `<td>${v}</td>`).join('')
-                + `<td><span class="lote-estado ${f.estado}">${ESTADO_LABEL[f.estado] || f.estado}</span></td></tr>`;
+                + `<td><span class="lote-estado ${escapeHtml(f.estado)}">${escapeHtml(ESTADO_LABEL[f.estado] || f.estado)}</span></td></tr>`;
         });
         html += '</tbody></table></div>';
         return html;
@@ -1551,8 +1551,8 @@
         const vals = settled.map(s => s.status === 'fulfilled' ? s.value : null);
         const huboError = settled.some(s => s.status === 'rejected');
         const sinDatos = vals.every(v => v == null);
-        let estado = sinDatos ? 'sin' : (huboError ? 'parcial' : 'ok');
-        if (estado === 'sin') return Object.assign({}, item, { estado: 'sin' });
+        let estado = sinDatos ? (huboError ? 'error' : 'sin') : (huboError ? 'parcial' : 'ok');
+        if (estado === 'sin' || estado === 'error') return Object.assign({}, item, { estado });
         const fila = tipo === 'electricidad'
             ? extraerFilaElec(vals[0], vals[1], vals[2], item)
             : extraerFilaGas(vals[0], vals[1], item);
@@ -1583,23 +1583,25 @@
             $('#loteProgText').textContent = `Procesando ${done} / ${total}…`;
         };
 
-        const filas = await runPool(items, (it) => procesarUno(it, tipo), 4, onProgress, () => loteCancelado);
+        try {
+            const filas = await runPool(items, (it) => procesarUno(it, tipo), 4, onProgress, () => loteCancelado);
 
-        $('#loteProcesarBtn').disabled = false;
-        $('#loteCancelarBtn').style.display = 'none';
-
-        const hechas = filas.filter(Boolean);
-        const cuenta = (s) => hechas.filter(f => f.estado === s).length;
-        $('#loteProgText').innerHTML = `${loteCancelado ? '⏹️ Cancelado. ' : '✅ Hecho. '}`
-            + `${cuenta('ok')} OK · ${cuenta('parcial')} parciales · ${cuenta('sin')} sin datos · ${cuenta('invalido')} inválidos.`;
-        $('#loteResultados').innerHTML = renderLoteTabla(hechas, cabeceras, tipo);
-        if (hechas.length) {
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-primary';
-            btn.textContent = 'Exportar CSV';
-            btn.style.marginBottom = '1rem';
-            btn.addEventListener('click', () => exportarCSV(hechas, cabeceras, tipo));
-            $('#loteResultados').insertBefore(btn, $('#loteResultados').firstChild);
+            const hechas = filas.filter(Boolean);
+            const cuenta = (s) => hechas.filter(f => f.estado === s).length;
+            $('#loteProgText').innerHTML = `${loteCancelado ? '⏹️ Cancelado. ' : '✅ Hecho. '}`
+                + `${cuenta('ok')} OK · ${cuenta('parcial')} parciales · ${cuenta('sin')} sin datos · ${cuenta('error')} errores · ${cuenta('invalido')} inválidos.`;
+            $('#loteResultados').innerHTML = renderLoteTabla(hechas, cabeceras, tipo);
+            if (hechas.length) {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-primary';
+                btn.textContent = 'Exportar CSV';
+                btn.style.marginBottom = '1rem';
+                btn.addEventListener('click', () => exportarCSV(hechas, cabeceras, tipo));
+                $('#loteResultados').insertBefore(btn, $('#loteResultados').firstChild);
+            }
+        } finally {
+            $('#loteProcesarBtn').disabled = false;
+            $('#loteCancelarBtn').style.display = 'none';
         }
     }
 
