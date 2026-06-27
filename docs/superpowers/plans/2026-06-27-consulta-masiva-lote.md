@@ -504,7 +504,6 @@ Añadir en el IIFE. `get(fila)` devuelve string ya formateado (números con coma
         const r = Math.round(n * Math.pow(10, dec)) / Math.pow(10, dec);
         return r.toString().replace('.', ',');
     }
-    const pcCols = (n) => Array.from({ length: 6 }, (_, k) => k + 1).map(i => ({ label: `${n} P${i} (kW)`, get: f => numES(f[n.startsWith('Pot') ? 'pc' : (n.startsWith('Cons') ? 'ca' : 'pico')][i], 2) }));
 
     const COLS_ELEC = [
         { label: 'Tarifa', get: f => f.tarifa },
