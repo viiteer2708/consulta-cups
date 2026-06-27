@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
     }
 
     // Validate CUPS format if provided
-    if (params.cups && !/^ES\d{16,20}\w{0,2}$/i.test(params.cups)) {
+    if (params.cups && !/^ES\d{16,20}\w{0,4}$/i.test(params.cups)) {
         return res.status(400).json({ error: 'invalid CUPS format' });
     }
 

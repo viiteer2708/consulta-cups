@@ -10,7 +10,7 @@
 | Si API devuelve MWh → convertir a kWh (×1000) | Los comerciales trabajan en kWh |
 | Cachear Bearer token en memoria (3600s vida) | Evitar llamadas de auth innecesarias |
 | Whitelist de endpoints en proxy | Seguridad: solo sips/info, sips/consumo, sips/consumo/anual |
-| Validar formato CUPS: `ES\d{16,20}\w{0,2}` | Evitar inyección y llamadas inválidas a API |
+| Validar formato CUPS: `ES\d{16,20}\w{0,4}` | Evitar inyección y llamadas inválidas a API (sufijo de hasta 4: control + punto frontera) |
 
 ## Stack
 - HTML5 + CSS3 + JavaScript vanilla (archivo único)

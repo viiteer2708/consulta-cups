@@ -49,7 +49,7 @@ solo envuelta en un selector de modo. El optimizador no se usa en lote.
   Parsea pegado o CSV. Detecta separador (tab de Excel / `,` / `;` / salto de línea).
   Toma la **1ª columna como CUPS** y el resto como columnas extra (dirección, nombre…).
   Si la 1ª fila no parece un CUPS, la trata como cabeceras. Normaliza CUPS (mayúsculas,
-  sin espacios), valida con la regex del proxy (`/^ES\d{16,20}\w{0,2}$/i`) y deduplica.
+  sin espacios), valida con la regex del proxy (`/^ES\d{16,20}\w{0,4}$/i`) y deduplica.
   Devuelve los `items` con `{ cups, extra: {...}, estado }` y las `cabeceras` de los extras.
 
 - **`procesarLote(items, tipo) -> Promise<filas[]>`**

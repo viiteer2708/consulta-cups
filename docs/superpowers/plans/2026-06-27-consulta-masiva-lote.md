@@ -12,9 +12,9 @@
 
 Cada tarea hereda implícitamente estas restricciones (valores literales del spec/CLAUDE.md):
 
-- **Archivo único:** todo el código va en `index.html`. No crear archivos nuevos (salvo los docs de `docs/superpowers/`). No tocar `api/proxy.js`.
+- **Archivo único:** todo el código va en `index.html`. No crear archivos nuevos (salvo los docs de `docs/superpowers/`). No tocar `api/proxy.js` (excepción aprobada 2026-06-27: ampliar la regex CUPS a `\w{0,4}`, ver más abajo).
 - **Sin dependencias:** vanilla JS puro. Sin frameworks, sin npm, sin librerías (descarta XLSX → el export es CSV).
-- **Validación CUPS:** `/^ES\d{16,20}\w{0,2}$/i` (la misma del proxy).
+- **Validación CUPS:** `/^ES\d{16,20}\w{0,4}$/i` (la misma del proxy; ampliada de `{0,2}` a `{0,4}` el 2026-06-27 para admitir CUPS de 22 con punto frontera — cambio aplicado también en `api/proxy.js` para mantener consistencia).
 - **Unidades:** potencias W→kW (`/1000`); consumo MWh→kWh (`×1000`) solo cuando `data.unidad` contenga "mwh".
 - **Concurrencia:** 4 peticiones simultáneas.
 - **Export:** CSV con separador `;` + BOM UTF-8 (`﻿`), con fila de cabecera en español. Nombre `inventario-{luz|gas}-AAAA-MM-DD.csv`. Números con coma decimal y sin separador de miles.
@@ -171,7 +171,7 @@ git commit -m "Modo Lote: chasis UI (toggle Individual|Lote + panel de entrada)"
 Añadir en el IIFE (cerca del final, antes de `// -- Events --`):
 
 ```javascript
-    const CUPS_RE = /^ES\d{16,20}\w{0,2}$/i;
+    const CUPS_RE = /^ES\d{16,20}\w{0,4}$/i;
 
     // Parsea texto pegado (incl. desde Excel) o el contenido de un CSV/TXT.
     // 1ª columna = CUPS; el resto = columnas extra. Si la 1ª fila no trae un CUPS, son cabeceras.
