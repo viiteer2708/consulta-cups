@@ -1448,15 +1448,15 @@
 
     function extraerFilaGas(info, consumo, item) {
         const fila = Object.assign({}, item);
-        fila.tarifa = info ? (info.codigoPeajeEnVigor || info.codigoTarifaATREnVigor || '') : '';
-        fila.distribuidora = info ? (info.nombreEmpresaDistribuidora || '') : '';
-        fila.caudalDiario = info && info.caudalMaximoDiarioEnWhDia != null ? info.caudalMaximoDiarioEnWhDia : '';
-        fila.caudalHorario = info && info.caudalHorarioEnWh != null ? info.caudalHorarioEnWh : '';
-        fila.presion = info && info.presionMedida != null ? info.presionMedida : '';
-        fila.cp = info && info.codigoPostalPS != null ? String(info.codigoPostalPS) : '';
-        fila.cnae = info && info.CNAE != null ? String(info.CNAE) : '';
+        // La API de gas (SCTD) usa nombres dist_*/com_*, distintos de los de luz (SIPS).
+        fila.peaje = info ? (info.dist_tarifapeaje || '') : '';
+        fila.distribuidora = info ? (info.distribuidora || '') : '';
+        fila.cp = info ? String(info.com_codpostal || info.dist_codpostal || '') : '';
+        fila.municipio = info ? (info.com_descmunicipio || info.dist_descmunicipio || '') : '';
+        fila.provincia = info ? (info.com_descprovincia || info.dist_descprovincia || '') : '';
+        fila.caudalMax = info && info.dist_qmax != null ? info.dist_qmax : null;
+        fila.caudalHorario = info && info.dist_qh != null ? info.dist_qh : null;
         fila.consumoTotal = consumoTotalKwh(consumo);
-        fila.ultimaLectura = info && info.fechaUltimaLectura ? fmtDate(info.fechaUltimaLectura) : '';
         return fila;
     }
 
@@ -1480,17 +1480,16 @@
         { label: 'Última lectura', get: f => f.ultimaLectura }
     ];
     const COLS_GAS = [
-        { label: 'Tarifa/Peaje', get: f => f.tarifa },
-        { label: 'Distribuidora', get: f => f.distribuidora },
-        { label: 'Caudal máx diario', get: f => String(f.caudalDiario ?? '') },
-        { label: 'Caudal horario', get: f => String(f.caudalHorario ?? '') },
-        { label: 'Presión', get: f => String(f.presion ?? '') },
-        { label: 'CP', get: f => f.cp },
-        { label: 'CNAE', get: f => f.cnae },
         { label: 'Consumo anual (kWh)', get: f => numES(f.consumoTotal, 0) },
-        { label: 'Última lectura', get: f => f.ultimaLectura }
+        { label: 'Peaje', get: f => f.peaje },
+        { label: 'Distribuidora', get: f => f.distribuidora },
+        { label: 'CP', get: f => f.cp },
+        { label: 'Municipio', get: f => f.municipio },
+        { label: 'Provincia', get: f => f.provincia },
+        { label: 'Caudal máx', get: f => numES(f.caudalMax, 2) },
+        { label: 'Caudal horario', get: f => numES(f.caudalHorario, 2) }
     ];
-    const ESTADO_LABEL = { ok: 'OK', parcial: 'Parcial', sin: 'Sin datos', invalido: 'Formato inválido', error: 'Error API' };
+    const ESTADO_LABEL = { ok: 'OK', parcial: 'Parcial', sin: 'Sin datos', invalido: 'CUPS inválido', error: 'Error API' };
 
     function colsDe(tipo) { return tipo === 'gas' ? COLS_GAS : COLS_ELEC; }
 
@@ -1545,7 +1544,7 @@
             ? [['sips/info', { cups: item.cups }],
                ['sips/consumo/anual', { linea: 'electricidad', cups: item.cups }],
                ['sips/consumo', { linea: 'electricidad', cups: item.cups }]]
-            : [['sips/info', { cups: item.cups }],
+            : [['sips/info', { linea: 'gas', cups: item.cups }],
                ['sips/consumo/anual', { linea: 'gas', cups: item.cups }]];
         const settled = await Promise.allSettled(endpoints.map(([e, p]) => getConRetry(e, p)));
         const vals = settled.map(s => s.status === 'fulfilled' ? s.value : null);
