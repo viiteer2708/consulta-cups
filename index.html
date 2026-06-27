@@ -1343,6 +1343,44 @@
         }
     }
 
+    const CUPS_RE = /^ES\d{16,20}\w{0,4}$/i;
+
+    // Parsea texto pegado (incl. desde Excel) o el contenido de un CSV/TXT.
+    // 1ª columna = CUPS; el resto = columnas extra. Si la 1ª fila no trae un CUPS, son cabeceras.
+    function parseLoteInput(texto) {
+        const lineas = (texto || '').split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (!lineas.length) return { cabeceras: [], items: [] };
+
+        const splitCols = (l) => l.includes('\t') ? l.split('\t')
+            : (l.includes(';') ? l.split(';') : (l.includes(',') ? l.split(',') : [l]));
+
+        let cabeceras = [];
+        let start = 0;
+        const primeraCols = splitCols(lineas[0]).map(c => c.trim());
+        const primeraCupsNorm = primeraCols[0].toUpperCase().replace(/\s/g, '');
+        if (!CUPS_RE.test(primeraCupsNorm)) {            // la 1ª fila son cabeceras
+            cabeceras = primeraCols.slice(1);
+            start = 1;
+        }
+
+        const items = [];
+        const vistos = new Set();
+        for (let i = start; i < lineas.length; i++) {
+            const cols = splitCols(lineas[i]).map(c => c.trim());
+            const cups = cols[0].toUpperCase().replace(/\s/g, '');
+            if (!cups || vistos.has(cups)) continue;      // dedup por CUPS
+            vistos.add(cups);
+            const extra = {};
+            cols.slice(1).forEach((v, idx) => { extra[cabeceras[idx] || `Extra ${idx + 1}`] = v; });
+            items.push({ cups, extra, estado: CUPS_RE.test(cups) ? 'pendiente' : 'invalido' });
+        }
+        // Normaliza el set de cabeceras al máximo nº de extras encontrado
+        const maxExtra = items.reduce((m, it) => Math.max(m, Object.keys(it.extra).length), cabeceras.length);
+        const cabFinal = [];
+        for (let i = 0; i < maxExtra; i++) cabFinal.push(cabeceras[i] || `Extra ${i + 1}`);
+        return { cabeceras: cabFinal, items };
+    }
+
     // -- Events --
     cupsInput.addEventListener('input', () => {
         const val = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
@@ -1351,6 +1389,22 @@
     });
     searchBtn.addEventListener('click', search);
     cupsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !searchBtn.disabled) search(); });
+
+    $('#loteFile').addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => { $('#loteInput').value = reader.result; };
+        reader.readAsText(f, 'UTF-8');
+    });
+
+    $('#loteProcesarBtn').addEventListener('click', () => {
+        const { cabeceras, items } = parseLoteInput($('#loteInput').value);
+        const validos = items.filter(it => it.estado === 'pendiente').length;
+        const invalidos = items.length - validos;
+        $('#loteOutput').innerHTML = `<div class="lote-progress">Detectados <strong>${items.length}</strong> CUPS únicos: `
+            + `${validos} válidos, ${invalidos} con formato inválido. Cabeceras extra: ${cabeceras.length ? cabeceras.join(', ') : '—'}.</div>`;
+    });
 
     fetch('/api/proxy?endpoint=sips/info&cups=test')
         .then(() => { statusDot.classList.add('ok'); statusTextEl.textContent = 'Conectado'; })
