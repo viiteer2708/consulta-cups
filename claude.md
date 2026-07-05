@@ -94,10 +94,10 @@ No usa el optimizador. `api/proxy.js` no se toca.
 ---
 
 ## Vault de Obsidian (contexto transversal)
-Este proyecto está conectado con mi vault de Obsidian en `/mnt/c/Users/viite/Documents/OBSIDIAN/VIITEER`.
+Este proyecto está conectado con mi vault de Obsidian en `C:\Users\Victor\Documents\VITER VAULT`
+(en WSL: `/mnt/c/Users/Victor/Documents/VITER VAULT`).
 
-Si el vault no está cargado como directorio adicional, cárgalo:
-/add-dir /mnt/c/Users/viite/Documents/OBSIDIAN/VIITEER
+Si el vault no está cargado como directorio adicional, cárgalo con `/add-dir <ruta>`.
 
 ### Contexto de negocio
 Proyecto de **Mega Energía** (brokerage energético). Buscar en vault:
@@ -112,20 +112,15 @@ Antes de tomar decisiones de arquitectura o negocio, consulta el vault para veri
 
 ---
 
-## Wiki / Segundo Cerebro
+## Conocimiento (Segundo Cerebro)
 
-Victor mantiene un wiki persistente (patrón LLM Wiki de Karpathy) en su vault de Obsidian.
+Wiki persistente de Victor (patrón LLM Wiki de Karpathy): `C:\Users\Victor\Documents\VITER VAULT\_Wiki\`
+— índice en `_Wiki\index.md`, contrato completo en `_Wiki\CLAUDE.md` (leer SIEMPRE antes de escribir en el wiki).
 
-- **Ruta:** C:\Users\viite\Documents\OBSIDIAN\VIITEER\_Wiki\
-- **Schema:** _Wiki/CLAUDE.md (leer SIEMPRE antes de escribir en el wiki)
-- **Páginas:** _Wiki/wiki/{entities,concepts,projects,sources,syntheses,queries,reports}/
-- **Index:** _Wiki/index.md (actualizar en cada ingest)
-- **Log:** _Wiki/log.md (append-only, entrada en cada operación)
-- **Raw (inmutable):** _Wiki/raw/ — NO modificar
+**Páginas del wiki de este repo** (leer antes de trabajo estratégico o de negocio):
+- `wiki/concepts/sicom-api.md` — la API que consume esta herramienta
+- `wiki/projects/mega-energia.md` — contexto de Mega Energía
+- `wiki/projects/dpc.md` — DPC comparte la lógica CUPS
 
-Cuando Victor diga "actualiza el wiki", "ingesta al wiki", o "qué sabemos sobre X":
-1. Leer C:\Users\viite\Documents\OBSIDIAN\VIITEER\_Wiki\CLAUDE.md
-2. Ejecutar la operación (ingest, query, o lint) siguiendo las convenciones
-3. Actualizar index.md y log.md
-
-Todo en español. Frontmatter YAML obligatorio en cada página.
+Ancla todo claim de negocio en una página del wiki; si no existe página, dilo.
+Cuando Victor diga "actualiza el wiki", "ingesta esto" o "qué sabemos sobre X": leer `_Wiki\CLAUDE.md` y ejecutar la operación (ingest/query/lint) siguiendo sus convenciones. Todo en español.
