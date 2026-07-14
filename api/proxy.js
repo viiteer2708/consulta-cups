@@ -1,8 +1,56 @@
-let cachedToken = null;
-let tokenExpiry = 0;
+const https = require('https');
 
-async function getToken() {
-    if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
+// ============================================================
+// Conexión a SICOM: nodo fijado por conexión + rotación ante nodo roto
+// (espejo del fix de dpc-comparador 757229a, 14-jul-2026)
+// ============================================================
+//
+// SICOM vive tras el gateway de ODF (gateway.prod.odfenergia.es), que fija
+// el nodo de backend POR CONEXIÓN TCP. Cuando un nodo está roto responde
+// 403 {"error":"Ha ocurrido un error interno al consultar."} a TODAS las
+// consultas de esa conexión mientras el resto de nodos funciona. Por eso:
+// UNA conexión keep-alive por instancia; si responde 403/5xx se ROTA la
+// conexión (socket nuevo → sorteo de nodo nuevo), se re-autentica por la
+// nueva y se reintenta. Reintentar por el mismo socket repite nodo roto.
+// ============================================================
+
+const AGENT_OPTS = { keepAlive: true, maxSockets: 1, keepAliveMsecs: 30000 };
+let sicomAgent = new https.Agent(AGENT_OPTS);
+
+function rotateSicomAgent() {
+    const old = sicomAgent;
+    sicomAgent = new https.Agent(AGENT_OPTS);
+    old.destroy();
+}
+
+let cachedToken = null;
+let cachedTokenIssuedAt = 0; // epoch ms
+const TOKEN_MAX_AGE_MS = 50 * 60 * 1000; // renovar a los 50 min (caduca a los 60)
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Petición HTTPS por el socket fijo. Devuelve { status, body } con el body ya leído. */
+function sicomRequest(url, { method = 'GET', headers = {}, body = null } = {}) {
+    return new Promise((resolve, reject) => {
+        const u = new URL(url);
+        const req = https.request(
+            { host: u.hostname, path: u.pathname + u.search, method, agent: sicomAgent, headers },
+            (res) => {
+                let buf = '';
+                res.on('data', (c) => (buf += c));
+                res.on('end', () => resolve({ status: res.statusCode, body: buf }));
+            }
+        );
+        req.on('error', reject);
+        if (body) req.write(body);
+        req.end();
+    });
+}
+
+async function getToken(forceFresh = false) {
+    if (!forceFresh && cachedToken && Date.now() - cachedTokenIssuedAt < TOKEN_MAX_AGE_MS) {
+        return cachedToken;
+    }
 
     const apiBase = process.env.SICOM_API_BASE;
     const username = process.env.SICOM_USERNAME;
@@ -12,23 +60,24 @@ async function getToken() {
         throw new Error('Missing env vars: SICOM_API_BASE, SICOM_USERNAME, or SICOM_PASSWORD');
     }
 
-    const res = await fetch(`${apiBase}/auth/token`, {
+    // SIEMPRE por el socket fijo: el token queda registrado en el nodo al
+    // que está pegada esta conexión, que es donde irán las consultas.
+    const res = await sicomRequest(`${apiBase}/auth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
     });
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Auth failed (${res.status}): ${text}`);
+    if (res.status !== 200) {
+        throw new Error(`Auth failed (${res.status}): ${res.body}`);
     }
 
-    const data = await res.json();
+    const data = JSON.parse(res.body);
     const authField = data.authorization || data.token || data.access_token || '';
     cachedToken = authField.replace(/^Bearer\s+/i, '');
     if (!cachedToken) throw new Error('No token in auth response');
 
-    tokenExpiry = Date.now() + 3500 * 1000;
+    cachedTokenIssuedAt = Date.now();
     return cachedToken;
 }
 
@@ -50,34 +99,37 @@ module.exports = async (req, res) => {
     try {
         let token = await getToken();
 
-        // Build query string from remaining params (cups, linea, etc.)
         const qs = new URLSearchParams(params).toString();
         const url = `${process.env.SICOM_API_BASE}/${endpoint}${qs ? '?' + qs : ''}`;
 
-        let apiRes = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (apiRes.status === 401) {
-            cachedToken = null;
-            token = await getToken();
-            apiRes = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+        const fetchOnce = () =>
+            sicomRequest(url, {
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             });
+
+        // 403/5xx = conexión pegada a un nodo roto → rotar socket + re-auth +
+        // reintento. 401 = token caducado: mismo tratamiento.
+        const isTransient = (r) => r.status === 401 || r.status === 403 || r.status >= 500;
+        const waits = [250, 500, 1000];
+
+        let apiRes = await fetchOnce();
+        for (let intento = 0; intento < waits.length && isTransient(apiRes); intento++) {
+            rotateSicomAgent();
+            try {
+                token = await getToken(true);
+            } catch (e) {
+                // Si la re-auth falla, probamos igualmente con el token actual:
+                // los tokens parecen compartidos entre nodos.
+            }
+            await sleep(waits[intento]);
+            apiRes = await fetchOnce();
         }
 
-        if (!apiRes.ok) {
-            const text = await apiRes.text();
-            return res.status(apiRes.status).send(text);
+        if (apiRes.status !== 200) {
+            return res.status(apiRes.status).send(apiRes.body);
         }
 
-        const json = await apiRes.json();
+        const json = JSON.parse(apiRes.body);
         return res.status(200).json(json);
     } catch (err) {
         return res.status(500).json({ error: err.message });
