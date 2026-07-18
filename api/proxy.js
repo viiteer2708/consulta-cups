@@ -42,7 +42,18 @@ class SicomHttpsAgent extends https.Agent {
     }
 }
 
-const AGENT_OPTS = { keepAlive: true, maxSockets: 1, keepAliveMsecs: 30000 };
+// Además de tolerar CERT_HAS_EXPIRED, se aportan las CA intermedias del
+// certificado de SICOM (api/_sicom-ca.js): el 18-jul ODF instaló el cert
+// renovado SIN cadena y sin ellas Node falla con UNABLE_TO_VERIFY_LEAF_SIGNATURE
+// (ese error se sigue rechazando — con las CA la validación completa pasa).
+const SICOM_INTERMEDIATE_CAS = require('./_sicom-ca.js');
+
+const AGENT_OPTS = {
+    keepAlive: true,
+    maxSockets: 1,
+    keepAliveMsecs: 30000,
+    ca: [...tls.rootCertificates, ...SICOM_INTERMEDIATE_CAS],
+};
 let sicomAgent = new SicomHttpsAgent(AGENT_OPTS);
 
 function rotateSicomAgent() {
