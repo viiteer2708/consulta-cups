@@ -1,4 +1,5 @@
 const https = require('https');
+const tls = require('tls');
 
 // ============================================================
 // Conexión a SICOM: nodo fijado por conexión + rotación ante nodo roto
@@ -14,12 +15,38 @@ const https = require('https');
 // nueva y se reintenta. Reintentar por el mismo socket repite nodo roto.
 // ============================================================
 
+// ============================================================
+// TLS: el 16-jul-2026 caducó el certificado *.megaenergia.es que sirve el
+// gateway y toda consulta murió con "certificate has expired" antes de
+// llegar a la API. Mitigación quirúrgica: se tolera EXACTAMENTE ese error
+// (CERT_HAS_EXPIRED) y solo si el certificado sigue perteneciendo al host
+// esperado; cualquier otro fallo TLS (cadena inválida, hostname distinto,
+// posible MITM) aborta como siempre. Cuando IT renueve el certificado la
+// validación normal vuelve a pasar y este código queda dormido.
+// ============================================================
+class SicomHttpsAgent extends https.Agent {
+    createConnection(options) {
+        const socket = super.createConnection({ ...options, rejectUnauthorized: false });
+        socket.once('secureConnect', () => {
+            const authErr = socket.authorizationError;
+            if (!authErr) return; // certificado válido: camino normal
+            const cert = socket.getPeerCertificate();
+            const host = options.servername || options.host;
+            const idErr = tls.checkServerIdentity(host, cert);
+            if (String(authErr) !== 'CERT_HAS_EXPIRED' || idErr) {
+                socket.destroy(new Error(`TLS SICOM rechazado (${authErr}${idErr ? ' + ' + idErr.code : ''})`));
+            }
+        });
+        return socket;
+    }
+}
+
 const AGENT_OPTS = { keepAlive: true, maxSockets: 1, keepAliveMsecs: 30000 };
-let sicomAgent = new https.Agent(AGENT_OPTS);
+let sicomAgent = new SicomHttpsAgent(AGENT_OPTS);
 
 function rotateSicomAgent() {
     const old = sicomAgent;
-    sicomAgent = new https.Agent(AGENT_OPTS);
+    sicomAgent = new SicomHttpsAgent(AGENT_OPTS);
     old.destroy();
 }
 
