@@ -22,8 +22,13 @@
 ```
 consulta-cups/
 ├── index.html          ← UI completa (HTML + CSS + JS)
+├── acceso.html         ← pantalla de clave (única página pública)
+├── vercel.json         ← redirect a /acceso.html si falta la cookie
 ├── api/
-│   └── proxy.js        ← Serverless proxy → API SICOM
+│   ├── proxy.js        ← Serverless proxy → API SICOM (exige cookie)
+│   ├── acceso.js       ← canjea la clave por la cookie de sesión
+│   ├── _auth.js        ← token HMAC-SHA256 + puerta `comprobarAcceso`
+│   └── _sicom-ca.js    ← CA intermedias del certificado de SICOM
 ├── CLAUDE.md
 ├── .gitignore
 └── .env (no commiteado)
@@ -65,6 +70,32 @@ Toggle `Individual | Lote`. Procesa muchos CUPS (pegados/Excel o CSV subido) en 
 contra el proxy actual (pool de 4, reintento 1×, cancelable), extrae datos crudos de SICOM
 (luz o gas, elegido por lote) y exporta un inventario a CSV (`;`+BOM, cabecera en español).
 No usa el optimizador. `api/proxy.js` no se toca.
+
+## Acceso (clave, desde 5-ago-2026)
+
+La herramienta enseña **datos personales de clientes reales** (titular, consumos del SIPS), así
+que va detrás de clave. Mismo esquema que `mega-calculadora`: cookie `cups_acceso` httpOnly con
+token `${expMs}.${firmaHex}` firmado HMAC-SHA256 (Web Crypto) usando **`ACCESS_PASSWORD`** como
+clave, TTL 30 días, sin estado en servidor. **Rotar `ACCESS_PASSWORD` invalida todas las
+sesiones vivas.** Env var a configurar en Vercel: `ACCESS_PASSWORD`.
+
+Dos barreras, y la que manda es la segunda:
+
+1. `vercel.json` redirige `/`, `/index.html` y `/docs/*` a `/acceso.html` cuando **falta** la
+   cookie (los `redirects` se evalúan antes del sistema de ficheros; es la única forma de tapar
+   un estático servido por la CDN). Solo mira que la cookie EXISTA — no sabe de firmas.
+2. `api/proxy.js` llama a `comprobarAcceso()` (`api/_auth.js`) **antes de nada**: verifica la
+   firma y la caducidad. Es la barrera criptográfica y la que protege los datos. Sin
+   `ACCESS_PASSWORD` en producción responde 503 (**fail-closed**); en desarrollo avisa por
+   consola y deja pasar.
+
+`api/acceso.js` es la única función sin cookie: coteja la clave (SHA-256 + comparación en tiempo
+constante), frena la fuerza bruta (5 fallos por IP → 429 durante 15 min, +400 ms por fallo) y
+emite la cookie. En `index.html`, un 401 del proxy manda a `/acceso.html?next=…`.
+
+> No se usa middleware de Vercel: en un proyecto sin framework, continuar la cadena exige
+> `next()` de `@vercel/functions` (npm) y ESM en la raíz — `"type": "module"` rompería
+> `api/proxy.js`, que es CommonJS.
 
 ## Flujo de trabajo
 1. Editar `index.html` directamente para cambios de UI/lógica

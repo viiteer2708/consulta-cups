@@ -2,6 +2,10 @@ const https = require('https');
 const tls = require('tls');
 const crypto = require('crypto');
 
+// Puerta de acceso: esta función devuelve datos personales del SIPS (titular,
+// consumos), así que NO se sirve nada sin cookie de sesión válida.
+const { comprobarAcceso } = require('./_auth.js');
+
 // ============================================================
 // Conexión a SICOM: nodo fijado por conexión + rotación ante nodo roto
 // (espejo del fix de dpc-comparador 757229a, 14-jul-2026)
@@ -224,6 +228,12 @@ async function respaldoGreening(endpoint, params) {
 }
 
 module.exports = async (req, res) => {
+    // Lo PRIMERO, antes de mirar siquiera los parámetros: sin sesión válida no
+    // se consulta el SIPS. `comprobarAcceso` es fail-closed en producción (sin
+    // ACCESS_PASSWORD responde 503, no abre).
+    const rechazo = await comprobarAcceso(req);
+    if (rechazo) return res.status(rechazo.status).json(rechazo.body);
+
     const { endpoint, ...params } = req.query;
     if (!endpoint) return res.status(400).json({ error: 'endpoint parameter required' });
 

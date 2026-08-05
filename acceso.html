@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Acceso — Consulta CUPS Mega Energía</title>
+    <style>
+        /* Mismos tokens que index.html (design system del proyecto). */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #dbeafe;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --danger: #ef4444;
+            --radius: 12px;
+            --shadow-lg: 0 10px 25px rgba(0,0,0,.08), 0 4px 10px rgba(0,0,0,.04);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.5;
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .card {
+            background: var(--surface); border-radius: var(--radius);
+            box-shadow: var(--shadow-lg); padding: 2rem; width: 100%; max-width: 380px;
+        }
+
+        .brand {
+            display: flex; align-items: center; justify-content: center; gap: .75rem;
+            font-weight: 700; font-size: 1.15rem; color: var(--primary);
+        }
+
+        h1 { font-size: 1.15rem; font-weight: 700; text-align: center; margin-top: 1.5rem; }
+        .sub { color: var(--text-muted); font-size: .875rem; text-align: center; margin-top: .35rem; }
+
+        form { margin-top: 1.5rem; }
+        label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .5rem; }
+
+        input[type="password"] {
+            width: 100%; padding: .85rem 1rem;
+            border: 2px solid var(--border); border-radius: var(--radius);
+            font-size: 1rem; font-family: inherit; outline: none;
+            transition: border-color .2s, box-shadow .2s;
+        }
+        input[type="password"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+
+        .error {
+            display: none; margin-top: .85rem; font-size: .85rem; color: var(--danger);
+        }
+        .error.show { display: block; }
+
+        .btn {
+            display: flex; align-items: center; justify-content: center;
+            width: 100%; margin-top: 1.25rem;
+            padding: .85rem 1.75rem; border: none; border-radius: var(--radius);
+            background: var(--primary); color: #fff;
+            font-size: .95rem; font-weight: 600; font-family: inherit;
+            cursor: pointer; transition: background .2s, opacity .2s;
+        }
+        .btn:hover:not(:disabled) { background: var(--primary-dark); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        .pie { margin-top: 1.5rem; font-size: .75rem; color: var(--text-muted); text-align: center; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="brand">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <span>Consulta CUPS</span>
+        </div>
+
+        <h1>Herramienta interna</h1>
+        <p class="sub">Consulta datos de clientes reales. Introduce la clave para entrar.</p>
+
+        <form id="form" autocomplete="on">
+            <label for="password">Clave de acceso</label>
+            <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" autofocus>
+            <p class="error" id="error" role="alert"></p>
+            <button class="btn" id="submit" type="submit" disabled>Entrar</button>
+        </form>
+
+        <p class="pie">Mega Energía · uso interno</p>
+    </main>
+
+<script>
+(function () {
+    'use strict';
+
+    var form = document.getElementById('form');
+    var input = document.getElementById('password');
+    var boton = document.getElementById('submit');
+    var error = document.getElementById('error');
+    var enviando = false;
+
+    /**
+     * Solo aceptamos rutas internas como destino: un `next` con host propio,
+     * con `//` o con `/\` sería un redirect abierto de manual. Mirar el
+     * prefijo no basta (el navegador normaliza la barra invertida), así que
+     * además resolvemos contra un origen de prueba y exigimos no haber salido
+     * de él. Ante cualquier duda, a la raíz.
+     */
+    function destinoSeguro(next) {
+        var ORIGEN_PRUEBA = 'http://x';
+        if (!next) return '/';
+        if (next.charAt(0) !== '/' || next.charAt(1) === '/' || next.charAt(1) === '\\') return '/';
+        var resuelta;
+        try {
+            resuelta = new URL(next, ORIGEN_PRUEBA);
+        } catch (e) {
+            return '/';
+        }
+        if (resuelta.origin !== ORIGEN_PRUEBA) return '/';
+        if (resuelta.pathname === '/acceso.html') return '/';
+        return next;
+    }
+
+    var destino = destinoSeguro(new URLSearchParams(window.location.search).get('next'));
+
+    function mostrarError(msg) {
+        error.textContent = msg;
+        error.classList.add('show');
+    }
+
+    input.addEventListener('input', function () {
+        boton.disabled = enviando || input.value.length === 0;
+        error.classList.remove('show');
+    });
+
+    form.addEventListener('submit', function (evento) {
+        evento.preventDefault();
+        if (enviando || input.value.length === 0) return;
+
+        enviando = true;
+        boton.disabled = true;
+        boton.textContent = 'Entrando…';
+        error.classList.remove('show');
+
+        fetch('/api/acceso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: input.value })
+        }).then(function (res) {
+            if (res.status === 204) {
+                // La cookie ya viene puesta: el botón se queda bloqueado
+                // mientras navega.
+                window.location.replace(destino);
+                return;
+            }
+            if (res.status === 401) {
+                mostrarError('Clave incorrecta.');
+            } else if (res.status === 429) {
+                mostrarError('Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.');
+            } else if (res.status === 503) {
+                mostrarError('La clave de acceso no está configurada en el servidor (ACCESS_PASSWORD). Avisa a dirección.');
+            } else {
+                mostrarError('No se ha podido comprobar la clave. Inténtalo de nuevo.');
+            }
+            enviando = false;
+            boton.disabled = input.value.length === 0;
+            boton.textContent = 'Entrar';
+        }).catch(function () {
+            mostrarError('Sin conexión con el servidor. Inténtalo de nuevo.');
+            enviando = false;
+            boton.disabled = input.value.length === 0;
+            boton.textContent = 'Entrar';
+        });
+    });
+})();
+</script>
+</body>
+</html>

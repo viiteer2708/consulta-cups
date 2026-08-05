@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "missing": [{ "type": "cookie", "key": "cups_acceso" }],
+      "destination": "/acceso.html",
+      "permanent": false
+    },
+    {
+      "source": "/index.html",
+      "missing": [{ "type": "cookie", "key": "cups_acceso" }],
+      "destination": "/acceso.html",
+      "permanent": false
+    },
+    {
+      "source": "/docs/:path*",
+      "missing": [{ "type": "cookie", "key": "cups_acceso" }],
+      "destination": "/acceso.html",
+      "permanent": false
+    }
+  ]
+}

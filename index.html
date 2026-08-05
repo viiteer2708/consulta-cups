@@ -492,10 +492,21 @@
     }
     function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 
+    // Sesión caducada o sin clave: el proxy responde 401 y volvemos a la
+    // pantalla de acceso recordando de dónde veníamos.
+    let yendoAAcceso = false;
+    function irAAcceso() {
+        if (yendoAAcceso) return;
+        yendoAAcceso = true;
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/acceso.html?next=${next}`);
+    }
+
     async function apiGet(endpoint, params) {
         const qs = new URLSearchParams(params);
         qs.set('endpoint', endpoint);
         const res = await fetch(`/api/proxy?${qs.toString()}`);
+        if (res.status === 401) { irAAcceso(); throw new Error('Sesión caducada'); }
         if (!res.ok) throw new Error(`Error ${res.status}`);
         const data = await res.json();
         if (data && data.error && typeof data.error === 'string') return null;
@@ -1625,7 +1636,10 @@
     $('#loteCancelarBtn').addEventListener('click', () => { loteCancelado = true; });
 
     fetch('/api/proxy?endpoint=sips/info&cups=test')
-        .then(() => { statusDot.classList.add('ok'); statusTextEl.textContent = 'Conectado'; })
+        .then((res) => {
+            if (res.status === 401) { irAAcceso(); return; }
+            statusDot.classList.add('ok'); statusTextEl.textContent = 'Conectado';
+        })
         .catch(() => { statusTextEl.textContent = 'Error de conexión'; });
 })();
 </script>
