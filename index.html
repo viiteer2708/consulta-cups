@@ -476,9 +476,12 @@
     function wToKw(w) { return (w != null && !isNaN(w)) ? parseFloat(w) / 1000 : null; }
     function mwhToKwh(v) { return (v != null && !isNaN(v)) ? parseFloat(v) * 1000 : null; }
 
-    // YYYY-MM-DD -> DD/MM/YYYY
+    // -> DD/MM/YYYY. SICOM devuelve YYYY-MM-DD en electricidad pero DD-MM-YYYY en gas
+    // (visto en sips/consumo/anual con linea=gas): la fecha de gas troceada como si
+    // fuera de luz pintaba "25/-2/01-0" en vez de "01/07/2025".
     function fmtDate(d) {
         if (!d || d.length < 10) return d || '—';
+        if (/^\d{2}-\d{2}-\d{4}/.test(d)) return d.substring(0, 10).replace(/-/g, '/');
         return d.substring(8, 10) + '/' + d.substring(5, 7) + '/' + d.substring(0, 4);
     }
 
