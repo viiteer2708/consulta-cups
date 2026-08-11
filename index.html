@@ -564,19 +564,50 @@
         renderCards(container, [...priority, ...rest]);
     }
 
+    // El feed de gas de SICOM (formato SIPS-CTD) llega con claves crudas dist_*/com_*,
+    // no con el camelCase de electricidad — el mapa antiguo esperaba claves que no
+    // existen y la ficha caía al volcado crudo. Se etiquetan los campos útiles para el
+    // comercial; los códigos internos sin diccionario (perfil, presión, corrector) se
+    // omiten a propósito.
     function renderInfoGas(data) {
         const container = $('#infoCards');
         container.innerHTML = '';
         const cards = [];
-        const fieldMap = {
-            nombreEmpresaDistribuidora: 'Distribuidora', codigoTarifaATREnVigor: 'Tarifa',
-            caudalMaximoDiarioEnWhDia: 'Caudal Máx. Diario', caudalHorarioEnWh: 'Caudal Horario',
-            codigoPostalPS: 'Código Postal', fechaUltimaLectura: 'Última Lectura',
-            CNAE: 'CNAE', presionMedida: 'Presión Medida', codigoPeajeEnVigor: 'Peaje en Vigor'
+        const NO_SI = { N: 'No', S: 'Sí' };
+        const add = (label, value, unit) => {
+            if (value == null || value === '') return;
+            cards.push({ label, value: String(value), unit: unit || '' });
         };
-        Object.entries(fieldMap).forEach(([key, label]) => {
-            if (data[key] != null && data[key] !== '' && data[key] !== 0) cards.push({ label, value: String(data[key]), unit: '' });
-        });
+        const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? fmt(n, 0) : null; };
+
+        let peaje = data.dist_tarifapeaje;
+        if (typeof peaje === 'string') {
+            const m = /^RL?\.?\s*(\d+)$/i.exec(peaje.trim());   // "R5" → "RL.5"
+            if (m) peaje = 'RL.' + m[1];
+        }
+        add('Tarifa de Acceso', peaje);
+        add('Caudal Máx. Diario', num(data.dist_qmax), 'kWh/día');
+        add('Caudal Horario', num(data.dist_qh), 'kWh/h');
+        add('Titular', data.cliente);
+        add('Distribuidora', data.distribuidora);
+
+        const via = [data.com_via || [data.dist_tipovia, data.dist_via].filter(Boolean).join(' '),
+                     data.com_numfinca || data.dist_numfinca].filter(Boolean).join(', ');
+        const prov = data.dist_descprovincia || data.com_descprovincia;
+        const muni = data.dist_descmunicipio || data.com_descmunicipio;
+        const pueblo = [muni, prov ? `(${prov})` : null].filter(Boolean).join(' ');
+        add('Dirección', [via, pueblo, data.dist_codpostal || data.com_codpostal].filter(Boolean).join(' · '));
+
+        add('Telemedida', NO_SI[data.dist_contelemedida]);
+        add('Planta Satélite', NO_SI[data.dist_indconectadoplantasatelite]);
+        add('Impagos', NO_SI[data.com_impagos]);
+        if (data.dist_fechaultimainspeccion) add('Última Inspección', fmtDate(data.dist_fechaultimainspeccion));
+        if (data.dist_fecultcambiotarifa) add('Último Cambio de Tarifa', fmtDate(data.dist_fecultcambiotarifa));
+        const noct = Number(data.dist_pctjeconsumonoct);
+        if (Number.isFinite(noct) && noct > 0) add('Consumo Nocturno', fmt(noct, 0), '%');
+
+        // Red de seguridad: si el feed viene con otra forma y nada mapeó, volcar crudo
+        // (mejor datos feos que ficha vacía).
         if (cards.length === 0) {
             Object.entries(data).forEach(([k, v]) => {
                 if (k === '_id' || k === 'cups' || k === 'cups20' || v == null || v === '') return;
