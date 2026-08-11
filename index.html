@@ -462,6 +462,18 @@
         if (selectedLinea === 'gas') btn.classList.add('gas-active');
     });
 
+    // Sincroniza el conmutador cuando la búsqueda detecta que el CUPS es de la otra línea.
+    function setLineaUI(value) {
+        selectedLinea = value;
+        lineaToggle.querySelectorAll('.toggle-btn').forEach(b => {
+            b.classList.remove('active', 'gas-active');
+            if (b.dataset.value === value) {
+                b.classList.add('active');
+                if (value === 'gas') b.classList.add('gas-active');
+            }
+        });
+    }
+
     const TARIFAS = {
         1:'2.0A', 3:'2.0DHA', 4:'2.0DHS', 5:'2.1A', 7:'2.1DHA', 8:'2.1DHS',
         11:'3.0A', 12:'3.1A', 13:'6.1A', 14:'6.1B', 15:'6.2', 16:'6.3', 17:'6.4',
@@ -1311,25 +1323,46 @@
     }
 
     // -- Main search --
+    // Pide ficha + consumos de una línea. OJO: sips/info también necesita `linea` —
+    // sin ella SICOM asume electricidad y un CUPS de gas devuelve el 403 genérico
+    // (por eso la ficha de gas no se pintaba nunca).
+    function fetchSips(linea, cups) {
+        return Promise.all([
+            safeGet('sips/info', { linea, cups }),
+            safeGet('sips/consumo/anual', { linea, cups }),
+            linea === 'electricidad' ? safeGet('sips/consumo', { linea, cups }) : Promise.resolve(null)
+        ]);
+    }
+
     async function search() {
         const cups = cupsInput.value.trim().toUpperCase().replace(/\s/g, '');
         if (!cups) return;
 
         hideError();
         setLoading(true, 'Consultando SIPS...');
-        const linea = selectedLinea;
+        let linea = selectedLinea;
 
         try {
-            const [infoData, consumoData, maxData] = await Promise.all([
-                safeGet('sips/info', { cups }),
-                safeGet('sips/consumo/anual', { linea, cups }),
-                linea === 'electricidad' ? safeGet('sips/consumo', { linea, cups }) : Promise.resolve(null)
-            ]);
+            let [infoData, consumoData, maxData] = await fetchSips(linea, cups);
+
+            // Nada en la línea elegida → se prueba la otra sola: el conmutador arranca
+            // en electricidad y, con un CUPS de gas, SICOM no dice "esto es gas" sino
+            // un error genérico que dejaba al comercial sin pista.
+            if (!infoData && !consumoData && !maxData) {
+                const otra = linea === 'electricidad' ? 'gas' : 'electricidad';
+                setLoading(true, `Sin datos como ${linea}. Probando como ${otra}...`);
+                const alt = await fetchSips(otra, cups);
+                if (alt[0] || alt[1] || alt[2]) {
+                    [infoData, consumoData, maxData] = alt;
+                    linea = otra;
+                    setLineaUI(otra);
+                }
+            }
 
             setLoading(false);
 
             if (!infoData && !consumoData && !maxData) {
-                showError('No se encontraron datos para el CUPS introducido. Verifica que el código es correcto y que has seleccionado Electricidad o Gas correctamente.');
+                showError('No se encontraron datos para el CUPS introducido, ni como electricidad ni como gas. Verifica que el código es correcto.');
                 return;
             }
 
